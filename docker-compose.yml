@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  # ----------------------------
+  # DATABASE SERVICE (PostgreSQL)
+  # ----------------------------
+  database:
+    image: postgres:16-alpine
+    container_name: uni_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: StrongPassword123! # Trong thực tế nên dùng .env
+      POSTGRES_DB: uni_facility_db
+    ports:
+      - "5432:5432" # Expose để quản lý bằng tool ngoài (pgAdmin/DBeaver)
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database:/docker-entrypoint-initdb.d # Tự động chạy script .sql khi khởi tạo
+    networks:
+      - uni-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d uni_facility_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------
+  # BACKEND SERVICE (NestJS)
+  # ----------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: uni_backend
+    restart: unless-stopped
+    depends_on:
+      database:
+        condition: service_healthy # Chỉ chạy khi DB healthcheck OK
+    environment:
+      DATABASE_HOST: database
+      DATABASE_PORT: 5432
+      DATABASE_USER: admin
+      DATABASE_PASSWORD: StrongPassword123!
+      DATABASE_NAME: uni_facility_db
+      PORT: 3000
+      # CORS setup cho Frontend
+      ALLOWED_ORIGINS: "http://localhost:3001"
+    ports:
+      - "3000:3000"
+    networks:
+      - uni-network
+
+  # ----------------------------
+  # FRONTEND SERVICE (Next.js)
+  # ----------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: uni_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      # Biến môi trường Build-time (Next.js cần NEXT_PUBLIC_)
+      NEXT_PUBLIC_API_URL: http://localhost:3000
+    ports:
+      - "3001:3000" # Map port 3000 của container ra port 3001 của máy host
+    networks:
+      - uni-network
+
+volumes:
+  postgres_data:
+
+networks:
+  uni-network:
+    driver: bridge
