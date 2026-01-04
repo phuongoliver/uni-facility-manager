@@ -67,7 +67,7 @@ export class BookingsService {
             group.userId = userId;
             group.facilityId = facility_id;
             group.recurrencePattern = recurrence_type;
-            group.status = BookingStatus.WAITING_PAYMENT;
+            group.status = BookingStatus.PENDING;
             savedGroup = await manager.save(BookingGroup, group);
         }
 
@@ -157,7 +157,7 @@ export class BookingsService {
 
             if (savedGroup) {
                 booking.group = savedGroup;
-                booking.status = BookingStatus.WAITING_PAYMENT;
+                booking.status = BookingStatus.PENDING;
             } else {
                 // Single booking
                 if (createBookingDto.status && facility.managerId === userId) {
@@ -481,15 +481,56 @@ export class BookingsService {
 
         if (!booking) throw new NotFoundException(`Booking #${id} not found`);
 
-        // Simple check: In real app, verify managerId manages booking.facilityId
-        // const facility = await this.facilityRepository.findOne({ where: { facilityId: booking.facilityId, managerId } });
-        // if (!facility) throw new ForbiddenException("Not authorized to manage this booking");
-
         if (booking.status !== BookingStatus.PENDING) {
             throw new BadRequestException(`Booking must be PENDING to approve. Current: ${booking.status}`);
         }
 
-        // Check for double booking (Race condition check)
+        // Handle Group Approval
+        if (booking.groupId) {
+            const groupBookings = await this.bookingsRepository.find({
+                where: { groupId: booking.groupId, status: BookingStatus.PENDING },
+                relations: ['facility']
+            });
+
+            // Check conflicts for ALL bookings in the group
+            for (const b of groupBookings) {
+                const conflict = await this.bookingsRepository.findOne({
+                    where: {
+                        facilityId: b.facilityId,
+                        status: In([BookingStatus.APPROVED, BookingStatus.WAITING_PAYMENT, BookingStatus.CONFIRMED]),
+                        checkInTime: LessThan(b.checkOutTime),
+                        checkOutTime: MoreThan(b.checkInTime),
+                        bookingId: Not(b.bookingId)
+                    }
+                });
+
+                if (conflict) {
+                    throw new ConflictException(`Cannot approve group: Slot ${b.checkInTime.toISOString()} is already booked (Booking #${conflict.bookingId}).`);
+                }
+            }
+
+            // Determine new status
+            const facilityPrice = parseFloat(booking.facility.price?.toString() || '0');
+            const newStatus = facilityPrice === 0 ? BookingStatus.CONFIRMED : BookingStatus.WAITING_PAYMENT;
+
+            // Update Group and Bookings
+            await this.dataSource.manager.update(BookingGroup, { groupId: booking.groupId }, { status: newStatus });
+            await this.bookingsRepository.update(
+                { groupId: booking.groupId, status: BookingStatus.PENDING },
+                { status: newStatus }
+            );
+
+            await this.notificationsService.sendAll(
+                booking.userId,
+                `Booking Group ${newStatus === BookingStatus.CONFIRMED ? 'Confirmed' : 'Approved'}`,
+                `Your booking group for ${booking.facility.name} is now ${newStatus}.`
+            );
+
+            booking.status = newStatus;
+            return booking;
+        }
+
+        // Single Booking Logic
         const conflict = await this.bookingsRepository.findOne({
             where: {
                 facilityId: booking.facilityId,
@@ -504,14 +545,11 @@ export class BookingsService {
             throw new ConflictException(`Facility is already booked during this time.`);
         }
 
-        // Check if facility is free (price = 0) or requires payment
         const facilityPrice = parseFloat(booking.facility.price?.toString() || '0');
 
         if (facilityPrice === 0) {
-            // Free facility - go directly to CONFIRMED
             booking.status = BookingStatus.CONFIRMED;
         } else {
-            // Paid facility - go to WAITING_PAYMENT
             booking.status = BookingStatus.WAITING_PAYMENT;
         }
 
