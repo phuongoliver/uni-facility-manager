@@ -1,6 +1,8 @@
 "use client";
+import { API_URL } from "@/lib/constants";
 
 import React, { useState, useMemo } from "react";
+import { useAuth } from "@/context/AuthContext";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -13,7 +15,9 @@ import {
     DollarSign,
     Upload,
     AlertCircle,
-    CalendarDays
+    CalendarDays,
+    Check,
+    ChevronsUpDown
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -27,6 +31,11 @@ import {
     FormLabel,
     FormMessage,
 } from "@/components/ui/form";
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import {
     Select,
@@ -41,38 +50,42 @@ import { Badge } from "@/components/ui/badge";
 import { BookingType } from "@/types/booking";
 import { ScheduleGrid, TIME_SLOTS } from "./ScheduleGrid";
 
-// --- MOCK DATA ---
-const FACILITIES = [
-    { id: 1, name: "Phòng Hội Thảo A", capacity: 50, pricePerHour: 500000, deposit: 1000000, type: "Hội trường" },
-    { id: 2, name: "Phòng Học 101", capacity: 30, pricePerHour: 200000, deposit: 500000, type: "Phòng học" },
-    { id: 3, name: "Lab Máy Tính", capacity: 25, pricePerHour: 300000, deposit: 2000000, type: "Phòng Lab" },
-    { id: 4, name: "Sân Bóng Chuyền", capacity: 200, pricePerHour: 150000, deposit: 500000, type: "Ngoài trời" },
-];
+// Vietnamese number formatter (uses dots as thousand separators)
+const formatVND = (num: number): string => {
+    return Math.round(num).toLocaleString('vi-VN');
+};
 
-const EQUIPMENTS = [
-    { id: 1, name: "Máy chiếu 4K", price: 100000, deposit: 2000000 },
-    { id: 2, name: "Micro không dây", price: 50000, deposit: 500000 },
-    { id: 3, name: "Bảng viết kính", price: 20000, deposit: 0 },
-    { id: 4, name: "Loa thùng", price: 80000, deposit: 1000000 },
-];
+// --- STATE & TYPES ---
+interface FacilityItem {
+    id: number;
+    name: string;
+    capacity: number;
+    price: number;
+    priceType: 'PER_HOUR' | 'PER_BOOKING' | 'ONE_TIME';
+    transactionType: 'DEPOSIT' | 'RENTAL_FEE' | 'FINE';
+    deposit: number;
+    type: string;
+}
 
-// Mock booked slots (e.g., Slot 2&3 on Today are busy)
-const BOOKED_SLOTS_MOCK = [
-    { date: new Date(), slotId: 2 },
-    { date: new Date(), slotId: 3 },
-];
+interface EquipmentItem {
+    id: number;
+    name: string;
+    price: number;
+    deposit: number;
+}
+
 
 // --- ZOD SCHEMA ---
 const bookingSchema = z.object({
-    facilityId: z.string().min(1, "Vui lòng chọn phòng"),
+    facilityId: z.string().min(1, "Please select a facility"),
     bookingType: z.nativeEnum(BookingType),
     purpose: z.string()
-        .min(10, "Mục đích sử dụng quá ngắn")
-        .refine((val) => val.trim().split(/\s+/).length <= 150, "Không được quá 150 từ"),
+        .min(10, "Purpose description is too short")
+        .refine((val) => val.trim().split(/\s+/).length <= 150, "Must not exceed 150 words"),
     equipments: z.array(
         z.object({
-            equipmentId: z.string().min(1, "Chọn thiết bị"),
-            quantity: z.number().min(1, "Số lượng tối thiểu là 1"),
+            equipmentId: z.string().min(1, "Select equipment"),
+            quantity: z.number().min(1, "Minimum quantity is 1"),
         })
     ).optional(),
     recurrence_type: z.enum(['DAILY', 'WEEKLY', 'MONTHLY']).optional(),
@@ -90,9 +103,58 @@ interface NewBookingFormProps {
 export function NewBookingForm({ editBookingId, onSuccess }: NewBookingFormProps) {
     const [selectedDate, setSelectedDate] = useState<Date | null>(null);
     const [selectedSlots, setSelectedSlots] = useState<number[]>([]);
+    const [openFacility, setOpenFacility] = useState(false);
+    const [facilitySearch, setFacilitySearch] = useState("");
 
     // Check if recurrence
     const [isRecurring, setIsRecurring] = useState(false);
+
+    const { user } = useAuth();
+    const [facilities, setFacilities] = useState<FacilityItem[]>([]);
+    const [equipmentsList, setEquipmentsList] = useState<EquipmentItem[]>([]);
+    const [editFacilityName, setEditFacilityName] = useState<string>('');
+
+    // Fetch Init Data
+    React.useEffect(() => {
+        const fetchInitData = async () => {
+            try {
+                const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3500';
+
+                const [facRes, eqRes] = await Promise.all([
+                    fetch(`${API_URL}/api/facilities`),
+                    fetch(`${API_URL}/api/equipments`)
+                ]);
+
+                if (facRes.ok) {
+                    const data = await facRes.json();
+                    setFacilities(data.map((f: any) => ({
+                        id: f.facilityId,
+                        name: f.name,
+                        capacity: f.capacity,
+                        price: parseFloat(f.price) || 0,  // Convert from string/decimal
+                        priceType: f.priceType || 'PER_HOUR',
+                        transactionType: f.transactionType || 'RENTAL_FEE',
+                        deposit: 0, // Default deposit
+                        type: f.type
+                    })));
+                }
+
+                if (eqRes.ok) {
+                    const data = await eqRes.json();
+                    setEquipmentsList(data.map((e: any) => ({
+                        id: e.equipmentId,
+                        name: e.name,
+                        price: parseFloat(e.rentalPrice) || 0,  // Convert from string/decimal
+                        deposit: 0
+                    })));
+                }
+            } catch (error) {
+                console.error("Failed to fetch init data", error);
+            }
+        };
+
+        fetchInitData();
+    }, []);
 
     const form = useForm<BookingFormValues>({
         resolver: zodResolver(bookingSchema),
@@ -101,6 +163,8 @@ export function NewBookingForm({ editBookingId, onSuccess }: NewBookingFormProps
             bookingType: BookingType.ACADEMIC,
             equipments: [],
             purpose: "",
+            recurrence_end_date: "",
+            rescheduleReason: "",
         },
     });
 
@@ -109,25 +173,41 @@ export function NewBookingForm({ editBookingId, onSuccess }: NewBookingFormProps
         name: "equipments",
     });
 
+    // Automatically set default recurrence type when recurring is enabled
+    React.useEffect(() => {
+        if (isRecurring) {
+            const current = form.getValues("recurrence_type");
+            if (!current) {
+                form.setValue("recurrence_type", "WEEKLY");
+            }
+        }
+    }, [isRecurring, form]);
+
     // --- FETCH EDIT DATA ---
     React.useEffect(() => {
         if (!editBookingId) return;
+        // Wait for facilities to load first
+        if (facilities.length === 0) return;
 
         // Fetch user bookings (since they are in history) or finding specific booking
-        // Using common finding logic (mocked by fetching all for user for now, or findByFacility if we had API)
-        // Correct approach: We use the API we have.
-        // Let's assume we can fetch all bookings for user (we are user) and find it.
-        // Actually, getting /api/bookings returns history.
-        fetch('http://localhost:3500/api/bookings')
+        fetch(`${API_URL}/api/bookings`, {
+            headers: {
+                'x-user-id': user?.userId?.toString() || '1'
+            }
+        })
             .then(res => res.json())
             .then((bookings: any[]) => {
                 const booking = bookings.find(b => b.bookingId === editBookingId);
                 if (booking) {
+                    // Store facility name for display
+                    const facilityName = booking.facility?.name || facilities.find(f => f.id === booking.facilityId)?.name || '';
+                    setEditFacilityName(facilityName);
+
                     form.reset({
                         facilityId: booking.facilityId.toString(),
                         purpose: booking.purpose,
                         bookingType: booking.bookingType,
-                        equipments: booking.details.map((d: any) => ({ equipmentId: d.equipmentId.toString(), quantity: d.quantity })),
+                        equipments: booking.details?.map((d: any) => ({ equipmentId: d.equipmentId.toString(), quantity: d.quantity })) || [],
                     });
 
                     // Set Date and Slots
@@ -136,13 +216,8 @@ export function NewBookingForm({ editBookingId, onSuccess }: NewBookingFormProps
                     setSelectedDate(checkIn);
 
                     // Find slots
-                    // Calculate start slot ID from time
-                    // Start 7:00 => ID 1. (Hr - 7) + 1?
-                    // Slot 1: 7:00. Slot 2: 8:00.
                     const startSlotId = checkIn.getHours() - 7 + 1;
-                    const endSlotId = checkOut.getMinutes() > 0 ? checkOut.getHours() - 7 + 1 : checkOut.getHours() - 7; // If 8:50 end, it's slot 2. 9:00 end might be end of slot 2 if exactly on hour?
-                    // Actually checkOut is +50 mins.
-                    // Let's deduce slots:
+                    const endSlotId = checkOut.getMinutes() > 0 ? checkOut.getHours() - 7 + 1 : checkOut.getHours() - 7;
                     const slots = [];
                     for (let s = startSlotId; s <= endSlotId; s++) {
                         slots.push(s);
@@ -151,10 +226,10 @@ export function NewBookingForm({ editBookingId, onSuccess }: NewBookingFormProps
                 }
             })
             .catch(console.error);
-    }, [editBookingId, form]);
+    }, [editBookingId, form, facilities, user]);
 
     // --- FETCH BOOKING LOGIC ---
-    const [bookedSlots, setBookedSlots] = useState<{ date: Date; slotId: number }[]>([]);
+    const [bookedSlots, setBookedSlots] = useState<{ date: Date; slotId: number; status?: string }[]>([]);
 
     const facilityId = form.watch("facilityId");
 
@@ -167,12 +242,12 @@ export function NewBookingForm({ editBookingId, onSuccess }: NewBookingFormProps
 
         const fetchBookings = async () => {
             try {
-                const res = await fetch(`http://localhost:3500/api/bookings/facility/${facilityId}`);
+                const res = await fetch(`${API_URL}/api/bookings/facility/${facilityId}`);
                 if (!res.ok) throw new Error("Failed to fetch bookings");
                 const bookings: any[] = await res.json();
 
                 // Transform API bookings to slots
-                const occupied: { date: Date; slotId: number }[] = [];
+                const occupied: { date: Date; slotId: number; status?: string }[] = [];
 
                 bookings.forEach(b => {
                     const checkIn = new Date(b.checkInTime);
@@ -199,7 +274,8 @@ export function NewBookingForm({ editBookingId, onSuccess }: NewBookingFormProps
                         if (slotStart < checkOut && slotEnd > checkIn) {
                             occupied.push({
                                 date: new Date(checkIn), // Mark this day
-                                slotId: slot.id
+                                slotId: slot.id,
+                                status: b.status
                             });
                         }
                     });
@@ -253,31 +329,43 @@ export function NewBookingForm({ editBookingId, onSuccess }: NewBookingFormProps
     const watchAllFields = form.watch();
 
     const calcResults = useMemo(() => {
-        let totalRental = 0;
-        let totalDeposit = 0;
+        let oneTimeTotalRental = 0;
+        let oneTimeTotalDeposit = 0;
 
-        // Facility Cost
-        const facility = FACILITIES.find(f => f.id.toString() === watchAllFields.facilityId);
+        // Facility Cost (One Time)
+        const facility = facilities.find(f => f.id.toString() === watchAllFields.facilityId);
         const slotsCount = selectedSlots.length;
 
         let facilityRental = 0;
         let facilityDeposit = 0;
 
-        if (facility && slotsCount > 0) {
-            facilityRental = facility.pricePerHour * slotsCount;
+        if (facility) {
+            switch (facility.priceType) {
+                case 'PER_HOUR':
+                    facilityRental = slotsCount > 0 ? facility.price * slotsCount : 0;
+                    break;
+                case 'PER_BOOKING':
+                    facilityRental = facility.price;
+                    break;
+                case 'ONE_TIME':
+                    facilityRental = facility.price;
+                    break;
+                default:
+                    facilityRental = slotsCount > 0 ? facility.price * slotsCount : 0;
+            }
             facilityDeposit = facility.deposit;
 
-            totalRental += facilityRental;
-            totalDeposit += facilityDeposit;
+            oneTimeTotalRental += facilityRental;
+            oneTimeTotalDeposit += facilityDeposit;
         }
 
-        // Equipments Cost
+        // Equipments Cost (One Time)
         let equipmentRental = 0;
         let equipmentDeposit = 0;
 
         if (watchAllFields.equipments) {
             watchAllFields.equipments.forEach((item) => {
-                const eq = EQUIPMENTS.find(e => e.id.toString() === item.equipmentId);
+                const eq = equipmentsList.find(e => e.id.toString() === item.equipmentId);
                 if (eq && item.quantity) {
                     const r = eq.price * item.quantity;
                     const d = eq.deposit * item.quantity;
@@ -285,27 +373,60 @@ export function NewBookingForm({ editBookingId, onSuccess }: NewBookingFormProps
                     equipmentRental += r;
                     equipmentDeposit += d;
 
-                    totalRental += r;
-                    totalDeposit += d;
+                    oneTimeTotalRental += r;
+                    oneTimeTotalDeposit += d;
                 }
             });
         }
 
+        // Recurrence Multiplier
+        let occurrenceCount = 1;
+        if (isRecurring && selectedDate && watchAllFields.recurrence_end_date && watchAllFields.recurrence_type) {
+            const endDate = new Date(watchAllFields.recurrence_end_date);
+            // reset hours to compare dates only
+            const start = new Date(selectedDate);
+            start.setHours(0, 0, 0, 0);
+            endDate.setHours(23, 59, 59, 999);
+
+            if (endDate >= start) {
+                let count = 0;
+                let current = new Date(start);
+                // Safety break
+                let safe = 0;
+                while (current <= endDate && safe < 366) { // Limit to 1 year approx to prevent freeze
+                    count++;
+                    safe++;
+                    // Increment
+                    if (watchAllFields.recurrence_type === 'DAILY') current.setDate(current.getDate() + 1);
+                    else if (watchAllFields.recurrence_type === 'WEEKLY') current.setDate(current.getDate() + 7);
+                    else if (watchAllFields.recurrence_type === 'MONTHLY') current.setMonth(current.getMonth() + 1);
+                    else break;
+                }
+                occurrenceCount = count > 0 ? count : 1;
+            }
+        }
+
         return {
-            total: totalRental + totalDeposit,
-            totalRental,
-            totalDeposit,
+            total: (oneTimeTotalRental * occurrenceCount) + (oneTimeTotalDeposit * occurrenceCount),
+            totalRental: oneTimeTotalRental * occurrenceCount,
+            totalDeposit: oneTimeTotalDeposit * occurrenceCount,
+
+            // Per single booking costs for display if needed
+            oneTimeRental: oneTimeTotalRental,
+            oneTimeDeposit: oneTimeTotalDeposit,
+
             facilityRental,
             facilityDeposit,
             equipmentRental,
-            equipmentDeposit
+            equipmentDeposit,
+            occurrenceCount
         };
-    }, [watchAllFields, selectedSlots]);
+    }, [watchAllFields, selectedSlots, facilities, equipmentsList, isRecurring, selectedDate]);
 
     // --- SUBMIT ---
     const onSubmit = (data: BookingFormValues) => {
         if (!selectedDate || selectedSlots.length === 0) {
-            alert("Vui lòng chọn thời gian trên lịch!");
+            alert("Please select a time slot on the calendar!");
             return;
         }
 
@@ -348,9 +469,12 @@ export function NewBookingForm({ editBookingId, onSuccess }: NewBookingFormProps
 
         if (editBookingId) {
             // RESCHEDULE
-            fetch("http://localhost:3500/api/bookings/reschedule", {
+            fetch(`${API_URL}/api/bookings/reschedule`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    "x-user-id": user?.userId.toString() || '1'
+                },
                 body: JSON.stringify({
                     oldBookingId: editBookingId,
                     newBookingData: payload
@@ -364,7 +488,7 @@ export function NewBookingForm({ editBookingId, onSuccess }: NewBookingFormProps
                     return res.json();
                 })
                 .then(() => {
-                    alert("Đã dời lịch thành công!");
+                    alert("Rescheduled successfully!");
                     if (onSuccess) {
                         onSuccess();
                     } else {
@@ -379,10 +503,11 @@ export function NewBookingForm({ editBookingId, onSuccess }: NewBookingFormProps
         }
 
         // Call API
-        fetch("http://localhost:3500/api/bookings", {
+        fetch(`${API_URL}/api/bookings`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
+                "x-user-id": user?.userId.toString() || '1'
             },
             body: JSON.stringify(payload),
         })
@@ -394,7 +519,7 @@ export function NewBookingForm({ editBookingId, onSuccess }: NewBookingFormProps
                 return res.json();
             })
             .then(() => {
-                alert("Đã tạo yêu cầu đặt phòng thành công!");
+                alert("Booking request created successfully!");
                 if (onSuccess) {
                     onSuccess();
                 } else {
@@ -403,7 +528,7 @@ export function NewBookingForm({ editBookingId, onSuccess }: NewBookingFormProps
             })
             .catch((err) => {
                 console.error(err);
-                alert(`Lỗi: ${err.message}`);
+                alert(`Error: ${err.message}`);
             });
     };
 
@@ -422,7 +547,7 @@ export function NewBookingForm({ editBookingId, onSuccess }: NewBookingFormProps
         const startTime = setMinutes(setHours(selectedDate, startH), startM);
         const endTime = setMinutes(setHours(selectedDate, endH), endM);
 
-        const title = `Booking Facility: ${FACILITIES.find(f => f.id.toString() === watchAllFields.facilityId)?.name || 'Facility'}`;
+        const title = `Booking Facility: ${facilities.find(f => f.id.toString() === watchAllFields.facilityId)?.name || 'Facility'}`;
         const details = watchAllFields.purpose || 'No details';
         const location = 'University Campus';
 
@@ -441,17 +566,17 @@ export function NewBookingForm({ editBookingId, onSuccess }: NewBookingFormProps
                 <div className="flex items-center justify-between">
                     <h2 className="text-xl font-bold flex items-center gap-2">
                         <CalendarIcon className="w-5 h-5 text-primary" />
-                        Lịch Biểu
+                        Schedule
                     </h2>
                     <div className="flex gap-2 text-sm text-gray-500">
                         <div className="flex items-center gap-1">
-                            <div className="w-3 h-3 bg-gray-100 border rounded"></div> Đã đặt
+                            <div className="w-3 h-3 bg-gray-100 border rounded"></div> Booked
                         </div>
                         <div className="flex items-center gap-1">
-                            <div className="w-3 h-3 bg-white border rounded"></div> Trống
+                            <div className="w-3 h-3 bg-white border rounded"></div> Available
                         </div>
                         <div className="flex items-center gap-1">
-                            <div className="w-3 h-3 bg-primary rounded"></div> Đang chọn
+                            <div className="w-3 h-3 bg-primary rounded"></div> Selecting
                         </div>
                     </div>
                 </div>
@@ -466,10 +591,10 @@ export function NewBookingForm({ editBookingId, onSuccess }: NewBookingFormProps
                 {selectedDate && selectedSlots.length > 0 && (
                     <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg flex items-center justify-between">
                         <div>
-                            <span className="font-semibold text-primary">Thời gian đã chọn: </span>
+                            <span className="font-semibold text-primary">Selected Time: </span>
                             <span className="text-gray-700 font-medium">
                                 {format(selectedDate, "dd/MM/yyyy")} —
-                                {TIME_SLOTS.find(s => s.id === Math.min(...selectedSlots))?.start} đến {TIME_SLOTS.find(s => s.id === Math.max(...selectedSlots))?.end}
+                                {TIME_SLOTS.find(s => s.id === Math.min(...selectedSlots))?.start} to {TIME_SLOTS.find(s => s.id === Math.max(...selectedSlots))?.end}
                             </span>
                         </div>
                         <Button
@@ -489,7 +614,7 @@ export function NewBookingForm({ editBookingId, onSuccess }: NewBookingFormProps
             <div className="space-y-6">
                 <Card className="border-none shadow-lg bg-white/80 backdrop-blur-sm sticky top-24">
                     <CardHeader>
-                        <CardTitle>Thông Tin Chi Tiết</CardTitle>
+                        <CardTitle>Booking Details</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <Form {...form}>
@@ -501,33 +626,121 @@ export function NewBookingForm({ editBookingId, onSuccess }: NewBookingFormProps
                                     name="facilityId"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel>Khu vực / Phòng</FormLabel>
+                                            <FormLabel>Area / Room</FormLabel>
                                             {editBookingId ? (
                                                 <div className="p-3 bg-gray-100 rounded-md border text-gray-700 font-medium">
-                                                    {FACILITIES.find(f => f.id.toString() === field.value)?.name || "Đang tải..."}
-                                                    <span className="block text-xs text-gray-500 font-normal mt-1">Không thể thay đổi địa điểm khi dời lịch</span>
+                                                    {editFacilityName || facilities.find(f => f.id.toString() === field.value)?.name || "Loading..."}
+                                                    <span className="block text-xs text-gray-500 font-normal mt-1">Cannot change facility when rescheduling</span>
                                                 </div>
                                             ) : (
-                                                <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                                    <FormControl>
-                                                        <SelectTrigger className="h-12">
-                                                            <SelectValue placeholder="Chọn địa điểm..." />
-                                                        </SelectTrigger>
-                                                    </FormControl>
-                                                    <SelectContent>
-                                                        {FACILITIES.map((f) => (
-                                                            <SelectItem key={f.id} value={f.id.toString()}>
-                                                                <div className="flex flex-col text-left">
-                                                                    <span className="font-semibold">{f.name}</span>
-                                                                    <span className="text-xs text-gray-400">
-                                                                        Sức chứa: {f.capacity} | {f.type}
-                                                                    </span>
+                                                <Popover open={openFacility} onOpenChange={setOpenFacility}>
+                                                    <PopoverTrigger asChild>
+                                                        <FormControl>
+                                                            <Button
+                                                                variant="outline"
+                                                                role="combobox"
+                                                                className={
+                                                                    cn(
+                                                                        "w-full justify-between h-12 font-normal",
+                                                                        !field.value && "text-muted-foreground"
+                                                                    )}
+                                                            >
+                                                                {field.value
+                                                                    ? facilities.find(
+                                                                        (f) => f.id.toString() === field.value
+                                                                    )?.name
+                                                                    : "Select facility..."}
+                                                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                                            </Button>
+                                                        </FormControl>
+                                                    </PopoverTrigger>
+                                                    <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                                                        <div className="p-2 border-b">
+                                                            <Input
+                                                                placeholder="Search..."
+                                                                value={facilitySearch}
+                                                                onChange={e => setFacilitySearch(e.target.value)}
+                                                                className="h-8 border-none focus-visible:ring-0 shadow-none bg-transparent"
+                                                            />
+                                                        </div>
+                                                        <div className="max-h-60 overflow-y-auto p-1">
+                                                            {facilities.filter(f => f.name.toLowerCase().includes(facilitySearch.toLowerCase())).length === 0 && (
+                                                                <div className="p-4 text-center text-sm text-gray-500">
+                                                                    No facility found.
                                                                 </div>
-                                                            </SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
+                                                            )}
+                                                            {facilities
+                                                                .filter(f => f.name.toLowerCase().includes(facilitySearch.toLowerCase()))
+                                                                .map((f) => (
+                                                                    <div
+                                                                        key={f.id}
+                                                                        className={cn("relative flex cursor-pointer select-none items-center rounded-sm px-2 py-2 text-sm outline-none hover:bg-gray-100 transition-colors",
+                                                                            field.value === f.id.toString() && "bg-blue-50 text-blue-700"
+                                                                        )}
+                                                                        onClick={() => {
+                                                                            form.setValue("facilityId", f.id.toString());
+                                                                            setOpenFacility(false);
+                                                                        }}
+                                                                    >
+                                                                        <Check
+                                                                            className={cn(
+                                                                                "mr-2 h-4 w-4",
+                                                                                field.value === f.id.toString()
+                                                                                    ? "opacity-100"
+                                                                                    : "opacity-0"
+                                                                            )}
+                                                                        />
+                                                                        <div className="flex flex-col">
+                                                                            <span className="font-semibold">{f.name}</span>
+                                                                            <span className="text-xs text-gray-500">
+                                                                                Capacity: {f.capacity} | {f.type} | {f.price === 0 ? 'Free' : `${formatVND(f.price)}đ/${f.priceType === 'PER_HOUR' ? 'hr' : f.priceType === 'PER_BOOKING' ? 'booking' : 'one-time'}`}
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                        </div>
+                                                    </PopoverContent>
+                                                </Popover>
                                             )}
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+
+                                {/* Booking Type */}
+                                <FormField
+                                    control={form.control}
+                                    name="bookingType"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Booking Type</FormLabel>
+                                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                                <FormControl>
+                                                    <SelectTrigger>
+                                                        <SelectValue placeholder="Select booking type..." />
+                                                    </SelectTrigger>
+                                                </FormControl>
+                                                <SelectContent>
+                                                    <SelectItem value={BookingType.ACADEMIC}>
+                                                        <div className="flex flex-col">
+                                                            <span className="font-medium">Academic</span>
+                                                            <span className="text-xs text-gray-500">Classes, lectures, tutorials</span>
+                                                        </div>
+                                                    </SelectItem>
+                                                    <SelectItem value={BookingType.EVENT}>
+                                                        <div className="flex flex-col">
+                                                            <span className="font-medium">Event</span>
+                                                            <span className="text-xs text-gray-500">Meetings, seminars, workshops</span>
+                                                        </div>
+                                                    </SelectItem>
+                                                    <SelectItem value={BookingType.PERSONAL}>
+                                                        <div className="flex flex-col">
+                                                            <span className="font-medium">Personal</span>
+                                                            <span className="text-xs text-gray-500">Individual or group study</span>
+                                                        </div>
+                                                    </SelectItem>
+                                                </SelectContent>
+                                            </Select>
                                             <FormMessage />
                                         </FormItem>
                                     )}
@@ -541,16 +754,16 @@ export function NewBookingForm({ editBookingId, onSuccess }: NewBookingFormProps
                                         // Note: 'purpose' validation logic in schema
                                         <FormItem>
                                             <div className="flex justify-between items-center">
-                                                <FormLabel>Mục đích</FormLabel>
+                                                <FormLabel>Purpose</FormLabel>
                                                 <span className={cn("text-xs",
                                                     (field.value?.trim().split(/\s+/).length || 0) > 150 ? "text-red-500" : "text-gray-400"
                                                 )}>
-                                                    {field.value?.trim() ? field.value.trim().split(/\s+/).length : 0}/150 từ
+                                                    {field.value?.trim() ? field.value.trim().split(/\s+/).length : 0}/150 words
                                                 </span>
                                             </div>
                                             <FormControl>
                                                 <Textarea
-                                                    placeholder="Mô tả ngắn gọn mục đích sử dụng..."
+                                                    placeholder="Briefly describe the purpose..."
                                                     className="resize-none min-h-[100px]"
                                                     {...field}
                                                 />
@@ -566,16 +779,16 @@ export function NewBookingForm({ editBookingId, onSuccess }: NewBookingFormProps
                                         name="rescheduleReason"
                                         render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel className="text-blue-600">Lý do dời lịch (Bắt buộc)</FormLabel>
+                                                <FormLabel className="text-blue-600">Reschedule Reason (Required)</FormLabel>
                                                 <FormControl>
                                                     <Textarea
-                                                        placeholder="Nhập lý do dời lịch..."
+                                                        placeholder="Enter reschedule reason..."
                                                         className="resize-none"
                                                         {...field}
                                                     />
                                                 </FormControl>
                                                 <FormDescription className="text-xs">
-                                                    Phí chuyển đổi có thể được áp dụng tùy theo quy định.
+                                                    Reschedule fees may apply.
                                                 </FormDescription>
                                                 <FormMessage />
                                             </FormItem>
@@ -595,7 +808,7 @@ export function NewBookingForm({ editBookingId, onSuccess }: NewBookingFormProps
                                                 className="w-4 h-4 text-primary rounded border-gray-300 focus:ring-primary"
                                             />
                                             <label htmlFor="recurrence" className="font-medium text-gray-700 cursor-pointer select-none">
-                                                Đặt lịch lặp lại (Chu kỳ)
+                                                Recurring Booking
                                             </label>
                                         </div>
 
@@ -606,17 +819,17 @@ export function NewBookingForm({ editBookingId, onSuccess }: NewBookingFormProps
                                                     name="recurrence_type"
                                                     render={({ field }) => (
                                                         <FormItem>
-                                                            <FormLabel>Lặp lại theo</FormLabel>
+                                                            <FormLabel>Repeat by</FormLabel>
                                                             <Select onValueChange={field.onChange} defaultValue={field.value || 'WEEKLY'}>
                                                                 <FormControl>
                                                                     <SelectTrigger>
-                                                                        <SelectValue placeholder="Chọn chu kỳ" />
+                                                                        <SelectValue placeholder="Select frequency" />
                                                                     </SelectTrigger>
                                                                 </FormControl>
                                                                 <SelectContent>
-                                                                    <SelectItem value="DAILY">Hàng ngày</SelectItem>
-                                                                    <SelectItem value="WEEKLY">Hàng tuần</SelectItem>
-                                                                    <SelectItem value="MONTHLY">Hàng tháng</SelectItem>
+                                                                    <SelectItem value="DAILY">Daily</SelectItem>
+                                                                    <SelectItem value="WEEKLY">Weekly</SelectItem>
+                                                                    <SelectItem value="MONTHLY">Monthly</SelectItem>
                                                                 </SelectContent>
                                                             </Select>
                                                         </FormItem>
@@ -627,7 +840,7 @@ export function NewBookingForm({ editBookingId, onSuccess }: NewBookingFormProps
                                                     name="recurrence_end_date"
                                                     render={({ field }) => (
                                                         <FormItem>
-                                                            <FormLabel>Đến ngày</FormLabel>
+                                                            <FormLabel>End Date</FormLabel>
                                                             <FormControl>
                                                                 <Input type="date" {...field} />
                                                             </FormControl>
@@ -642,7 +855,7 @@ export function NewBookingForm({ editBookingId, onSuccess }: NewBookingFormProps
                                 {/* Equipments */}
                                 <div className="space-y-4">
                                     <div className="flex items-center justify-between">
-                                        <FormLabel>Thiết bị thêm</FormLabel>
+                                        <FormLabel>Additional Equipment</FormLabel>
                                         <Button
                                             type="button"
                                             variant="ghost"
@@ -650,7 +863,7 @@ export function NewBookingForm({ editBookingId, onSuccess }: NewBookingFormProps
                                             className="h-8 text-primary hover:text-primary hover:bg-primary/10"
                                             onClick={() => append({ equipmentId: "", quantity: 1 })}
                                         >
-                                            <Plus className="w-4 h-4 mr-1" /> Thêm
+                                            <Plus className="w-4 h-4 mr-1" /> Add
                                         </Button>
                                     </div>
 
@@ -664,11 +877,11 @@ export function NewBookingForm({ editBookingId, onSuccess }: NewBookingFormProps
                                                         <Select onValueChange={field.onChange} defaultValue={field.value}>
                                                             <FormControl>
                                                                 <SelectTrigger>
-                                                                    <SelectValue placeholder="Loại" />
+                                                                    <SelectValue placeholder="Type" />
                                                                 </SelectTrigger>
                                                             </FormControl>
                                                             <SelectContent>
-                                                                {EQUIPMENTS.map((e) => (
+                                                                {equipmentsList.map((e) => (
                                                                     <SelectItem key={e.id} value={e.id.toString()}>
                                                                         {e.name}
                                                                     </SelectItem>
@@ -709,28 +922,41 @@ export function NewBookingForm({ editBookingId, onSuccess }: NewBookingFormProps
 
                                 {/* File Upload Mock */}
                                 <div className="space-y-2">
-                                    <FormLabel>Đính kèm tệp (Kế hoạch/Giấy phép)</FormLabel>
+                                    <FormLabel>Attach File (Plan/Permit)</FormLabel>
                                     <div className="border border-dashed border-gray-300 rounded-lg p-6 flex flex-col items-center justify-center text-gray-400 bg-gray-50/50 hover:bg-gray-50 transition cursor-pointer">
                                         <Upload className="w-8 h-8 mb-2 opacity-50" />
-                                        <span className="text-sm">Click để tải lên</span>
+                                        <span className="text-sm">Click to upload</span>
                                     </div>
                                 </div>
 
                             </form>
                         </Form>
-                    </CardContent>
+                    </CardContent >
                     <CardFooter className="flex-col gap-4 border-t bg-gray-50/50 p-6">
                         {/* PRICING */}
                         <div className="w-full space-y-2">
                             {/* Facility */}
-                            <div className="flex justify-between text-sm text-gray-600">
-                                <span>Phí thuê phòng ({selectedSlots.length} tiết):</span>
-                                <span>{calcResults.facilityRental.toLocaleString()} đ</span>
-                            </div>
+                            {(() => {
+                                const facility = facilities.find(f => f.id.toString() === watchAllFields.facilityId);
+                                const priceLabel = facility?.priceType === 'PER_HOUR'
+                                    ? `${selectedSlots.length} slots`
+                                    : facility?.priceType === 'PER_BOOKING'
+                                        ? 'per booking'
+                                        : 'one-time fee';
+                                return (
+                                    <div className="flex justify-between text-sm text-gray-600">
+                                        <span>
+                                            Facility Rental ({priceLabel}):
+                                            {facility?.price === 0 && <span className="ml-1 text-green-600 font-medium">FREE</span>}
+                                        </span>
+                                        <span>{formatVND(calcResults.facilityRental)} đ</span>
+                                    </div>
+                                );
+                            })()}
                             {calcResults.facilityDeposit > 0 && (
                                 <div className="flex justify-between text-sm text-orange-600/80">
-                                    <span>Cọc phòng:</span>
-                                    <span>{calcResults.facilityDeposit.toLocaleString()} đ</span>
+                                    <span>Facility Deposit:</span>
+                                    <span>{formatVND(calcResults.facilityDeposit)} đ</span>
                                 </div>
                             )}
 
@@ -741,26 +967,31 @@ export function NewBookingForm({ editBookingId, onSuccess }: NewBookingFormProps
 
                             {calcResults.equipmentRental > 0 && (
                                 <div className="flex justify-between text-sm text-gray-600">
-                                    <span>Phí thuê thiết bị:</span>
-                                    <span>{calcResults.equipmentRental.toLocaleString()} đ</span>
+                                    <span>Equipment Rental:</span>
+                                    <span>{formatVND(calcResults.equipmentRental)} đ</span>
                                 </div>
                             )}
                             {calcResults.equipmentDeposit > 0 && (
                                 <div className="flex justify-between text-sm text-orange-600/80">
-                                    <span>Cọc thiết bị:</span>
-                                    <span>{calcResults.equipmentDeposit.toLocaleString()} đ</span>
+                                    <span>Equipment Deposit:</span>
+                                    <span>{formatVND(calcResults.equipmentDeposit)} đ</span>
                                 </div>
                             )}
 
                             <div className="flex justify-between items-center pt-3 border-t mt-2">
                                 <div className="flex flex-col">
-                                    <span className="font-bold text-gray-800">Tổng tạm tính:</span>
+                                    <span className="font-bold text-gray-800">Estimated Total:</span>
                                     <span className="text-xs text-gray-400 font-normal">
-                                        (Thuê: {calcResults.totalRental.toLocaleString()} + Cọc: {calcResults.totalDeposit.toLocaleString()})
+                                        (Rental: {formatVND(calcResults.totalRental)} + Deposit: {formatVND(calcResults.totalDeposit)})
                                     </span>
+                                    {calcResults.occurrenceCount > 1 && (
+                                        <span className="text-xs text-blue-600 font-medium">
+                                            Includes {calcResults.occurrenceCount} recurring bookings
+                                        </span>
+                                    )}
                                 </div>
                                 <span className="text-2xl font-bold text-primary">
-                                    {calcResults.total.toLocaleString()} đ
+                                    {formatVND(calcResults.total)} đ
                                 </span>
                             </div>
                         </div>
@@ -769,11 +1000,11 @@ export function NewBookingForm({ editBookingId, onSuccess }: NewBookingFormProps
                             onClick={form.handleSubmit(onSubmit)}
                             className="w-full size-lg text-md font-semibold shadow-primary/20 shadow-lg"
                         >
-                            {editBookingId ? "Lưu thay đổi / Dời lịch" : "Xác nhận đặt"}
+                            {editBookingId ? "Save Changes / Reschedule" : "Confirm Booking"}
                         </Button>
                     </CardFooter>
-                </Card>
-            </div>
-        </div>
+                </Card >
+            </div >
+        </div >
     );
 }

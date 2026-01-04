@@ -1,18 +1,20 @@
 import { NewBookingForm } from "@/components/bookings/NewBookingForm";
 import { Navbar } from "@/components/layout/Navbar";
+import { API_URL } from "@/lib/constants";
 
 interface PageProps {
-    searchParams: { [key: string]: string | string[] | undefined };
+    searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }
 
 async function getBooking(id: string) {
-    const res = await fetch(`http://localhost:3500/api/bookings/${id}`, { cache: 'no-store' });
+    const res = await fetch(`${API_URL}/api/bookings/${id}`, { cache: 'no-store' });
     if (!res.ok) return null;
     return res.json();
 }
 
 export default async function BookRoomPage({ searchParams }: PageProps) {
-    const editId = searchParams?.edit;
+    const resolvedSearchParams = await searchParams;
+    const editId = resolvedSearchParams?.edit;
     let initialData = null;
 
     if (editId) {
@@ -44,12 +46,12 @@ export default async function BookRoomPage({ searchParams }: PageProps) {
             <main className="container mx-auto py-10 px-4 md:px-6 max-w-7xl">
                 <div className="flex flex-col gap-2 mb-10">
                     <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">
-                        {bookingId ? "Chỉnh Sửa / Dời Lịch Đặt Phòng" : "Tạo Yêu Cầu Đặt Phòng"}
+                        {bookingId ? "Edit / Reschedule Booking" : "Create Booking Request"}
                     </h1>
                     <p className="text-gray-500 text-lg">
                         {bookingId
-                            ? "Thay đổi thông tin hoặc chọn khung giờ mới cho yêu cầu của bạn."
-                            : "Chọn khung giờ trống trên lịch và điền thông tin chi tiết để giữ chỗ."}
+                            ? "Modify details or select a new time slot for your request."
+                            : "Select available slots on the calendar and fill in details to reserve."}
                     </p>
                 </div>
 

@@ -1,14 +1,13 @@
 // src/components/bookings/BookingForm.tsx
 "use client";
 
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { format, differenceInHours } from "date-fns";
-import { CalendarIcon, Plus, Trash2, Calculator } from "lucide-react";
+import { differenceInHours } from "date-fns";
+import { Plus, Trash2, Calculator, Loader2 } from "lucide-react";
 
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -27,21 +26,26 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BookingType } from "@/types/booking";
+import { API_URL } from "@/lib/constants";
 
-// --- MOCK DATA (Thay thế bằng API call thực tế) ---
-const FACILITIES = [
-  { id: 1, name: "Phòng Hội Thảo A", pricePerHour: 500000 },
-  { id: 2, name: "Phòng Học 101", pricePerHour: 200000 },
-  { id: 3, name: "Lab Máy Tính", pricePerHour: 300000 },
-];
+// Types matching backend entities
+interface Facility {
+  facilityId: number;
+  name: string;
+  price: number;
+  priceType: 'PER_HOUR' | 'PER_BOOKING' | 'ONE_TIME';
+  status: string;
+}
 
-const EQUIPMENTS = [
-  { id: 1, name: "Máy chiếu 4K", price: 100000 },
-  { id: 2, name: "Micro không dây", price: 50000 },
-  { id: 3, name: "Bảng viết kính", price: 20000 },
-];
+interface Equipment {
+  equipmentId: number;
+  name: string;
+  rentalPrice: number;
+  availableQuantity: number;
+  status: string;
+}
 
 // --- ZOD SCHEMA (Validation) ---
 const bookingSchema = z.object({
@@ -69,13 +73,47 @@ const bookingSchema = z.object({
 type BookingFormValues = z.infer<typeof bookingSchema>;
 
 export function BookingForm() {
+  const [facilities, setFacilities] = useState<Facility[]>([]);
+  const [equipments, setEquipments] = useState<Equipment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Fetch facilities and equipments on mount
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const [facilitiesRes, equipmentsRes] = await Promise.all([
+          fetch(`${API_URL}/api/facilities`),
+          fetch(`${API_URL}/api/equipments`),
+        ]);
+
+        if (facilitiesRes.ok) {
+          const facilitiesData = await facilitiesRes.json();
+          setFacilities(facilitiesData.filter((f: Facility) => f.status === 'AVAILABLE'));
+        }
+
+        if (equipmentsRes.ok) {
+          const equipmentsData = await equipmentsRes.json();
+          setEquipments(equipmentsData.filter((e: Equipment) => e.availableQuantity > 0 && e.status === 'GOOD'));
+        }
+      } catch (err) {
+        console.error('Failed to fetch data:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
   const form = useForm<BookingFormValues>({
     resolver: zodResolver(bookingSchema),
     defaultValues: {
       facilityId: "",
-      bookingType: BookingType.CLASS,
+      bookingType: BookingType.ACADEMIC,
       equipments: [],
-      checkInTime: "", // Dùng input type="datetime-local" cho đơn giản demo
+      checkInTime: "",
       checkOutTime: "",
     },
   });
@@ -91,46 +129,96 @@ export function BookingForm() {
   const totalCost = useMemo(() => {
     let total = 0;
 
-    // 1. Tính tiền phòng theo giờ
-    const facility = FACILITIES.find(f => f.id.toString() === watchAllFields.facilityId);
+    // 1. Tính tiền phòng theo loại giá
+    const facility = facilities.find(f => f.facilityId.toString() === watchAllFields.facilityId);
     const start = watchAllFields.checkInTime ? new Date(watchAllFields.checkInTime) : null;
     const end = watchAllFields.checkOutTime ? new Date(watchAllFields.checkOutTime) : null;
 
     if (facility && start && end && end > start) {
       const hours = differenceInHours(end, start) || 1; // Tối thiểu 1h
-      total += facility.pricePerHour * hours;
+      const price = Number(facility.price);
+
+      switch (facility.priceType) {
+        case 'PER_HOUR':
+          total += price * hours;
+          break;
+        case 'PER_BOOKING':
+        case 'ONE_TIME':
+          total += price;
+          break;
+        default:
+          total += price * hours;
+      }
     }
 
     // 2. Tính tiền thiết bị
     if (watchAllFields.equipments) {
       watchAllFields.equipments.forEach((item) => {
-        const eq = EQUIPMENTS.find(e => e.id.toString() === item.equipmentId);
+        const eq = equipments.find(e => e.equipmentId.toString() === item.equipmentId);
         if (eq && item.quantity) {
-          total += eq.price * item.quantity;
+          total += Number(eq.rentalPrice) * item.quantity;
         }
       });
     }
 
     return total;
-  }, [watchAllFields]);
+  }, [watchAllFields, facilities, equipments]);
 
   // --- SUBMIT HANDLER ---
-  const onSubmit = (data: BookingFormValues) => {
-    // Transform dữ liệu trước khi gửi API để match DTO
-    const payload = {
-      ...data,
-      facilityId: parseInt(data.facilityId),
-      checkInTime: new Date(data.checkInTime).toISOString(),
-      checkOutTime: new Date(data.checkOutTime).toISOString(),
-      equipments: data.equipments?.map(e => ({
-        ...e,
-        equipmentId: parseInt(e.equipmentId),
-      }))
-    };
+  const onSubmit = async (data: BookingFormValues) => {
+    try {
+      setSubmitting(true);
 
-    console.log("Payload match DTO:", payload);
-    alert("Đặt phòng thành công! (Xem console log)");
+      // Transform dữ liệu trước khi gửi API để match DTO
+      const payload = {
+        ...data,
+        facilityId: parseInt(data.facilityId),
+        checkInTime: new Date(data.checkInTime).toISOString(),
+        checkOutTime: new Date(data.checkOutTime).toISOString(),
+        equipments: data.equipments?.map(e => ({
+          ...e,
+          equipmentId: parseInt(e.equipmentId),
+        }))
+      };
+
+      console.log("Payload match DTO:", payload);
+
+      // TODO: Uncomment when API is ready
+      // const response = await fetch(`${API_URL}/api/bookings`, {
+      //   method: 'POST',
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: JSON.stringify(payload),
+      // });
+      // if (!response.ok) throw new Error('Booking failed');
+
+      alert("Đặt phòng thành công! (Xem console log)");
+    } catch (err) {
+      console.error('Booking failed:', err);
+      alert("Đặt phòng thất bại. Vui lòng thử lại.");
+    } finally {
+      setSubmitting(false);
+    }
   };
+
+  // Format price for display
+  const formatPrice = (facility: Facility) => {
+    const price = Number(facility.price);
+    if (price === 0) return 'Miễn phí';
+    const priceLabel = facility.priceType === 'PER_HOUR' ? '/giờ' :
+      facility.priceType === 'PER_BOOKING' ? '/lượt' : '/lần';
+    return `${price.toLocaleString('vi-VN')}đ${priceLabel}`;
+  };
+
+  if (loading) {
+    return (
+      <Card className="w-full max-w-4xl mx-auto shadow-lg border-none bg-white/80 backdrop-blur-sm">
+        <CardContent className="flex items-center justify-center py-20">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <span className="ml-2 text-gray-500">Đang tải dữ liệu...</span>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card className="w-full max-w-4xl mx-auto shadow-lg border-none bg-white/80 backdrop-blur-sm">
@@ -140,7 +228,7 @@ export function BookingForm() {
       <CardContent>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            
+
             {/* ROW 1: Thông tin chung */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <FormField
@@ -156,9 +244,9 @@ export function BookingForm() {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {FACILITIES.map((f) => (
-                          <SelectItem key={f.id} value={f.id.toString()}>
-                            {f.name} ({f.pricePerHour.toLocaleString()}đ/h)
+                        {facilities.map((f) => (
+                          <SelectItem key={f.facilityId} value={f.facilityId.toString()}>
+                            {f.name} ({formatPrice(f)})
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -196,7 +284,7 @@ export function BookingForm() {
 
             {/* ROW 2: Thời gian */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-               <FormField
+              <FormField
                 control={form.control}
                 name="checkInTime"
                 render={({ field }) => (
@@ -209,7 +297,7 @@ export function BookingForm() {
                   </FormItem>
                 )}
               />
-               <FormField
+              <FormField
                 control={form.control}
                 name="checkOutTime"
                 render={({ field }) => (
@@ -247,6 +335,7 @@ export function BookingForm() {
                   variant="outline"
                   size="sm"
                   onClick={() => append({ equipmentId: "", quantity: 1, note: "" })}
+                  disabled={equipments.length === 0}
                 >
                   <Plus className="w-4 h-4 mr-2" /> Thêm thiết bị
                 </Button>
@@ -266,9 +355,9 @@ export function BookingForm() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {EQUIPMENTS.map((e) => (
-                              <SelectItem key={e.id} value={e.id.toString()}>
-                                {e.name}
+                            {equipments.map((e) => (
+                              <SelectItem key={e.equipmentId} value={e.equipmentId.toString()}>
+                                {e.name} ({Number(e.rentalPrice) === 0 ? 'Miễn phí' : `${Number(e.rentalPrice).toLocaleString('vi-VN')}đ`})
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -283,10 +372,10 @@ export function BookingForm() {
                     render={({ field }) => (
                       <FormItem className="w-24">
                         <FormControl>
-                          <Input 
-                            type="number" 
-                            min={1} 
-                            {...field} 
+                          <Input
+                            type="number"
+                            min={1}
+                            {...field}
                             onChange={e => field.onChange(parseInt(e.target.value))}
                           />
                         </FormControl>
@@ -306,7 +395,9 @@ export function BookingForm() {
                 </div>
               ))}
               {fields.length === 0 && (
-                <p className="text-sm text-gray-400 text-center py-2">Chưa có thiết bị nào được chọn.</p>
+                <p className="text-sm text-gray-400 text-center py-2">
+                  {equipments.length === 0 ? 'Không có thiết bị khả dụng.' : 'Chưa có thiết bị nào được chọn.'}
+                </p>
               )}
             </div>
 
@@ -321,8 +412,19 @@ export function BookingForm() {
               </div>
             </div>
 
-            <Button type="submit" className="w-full h-12 text-lg font-medium shadow-md hover:shadow-lg transition-all">
-              Xác nhận Đặt phòng
+            <Button
+              type="submit"
+              className="w-full h-12 text-lg font-medium shadow-md hover:shadow-lg transition-all"
+              disabled={submitting}
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  Đang xử lý...
+                </>
+              ) : (
+                'Xác nhận Đặt phòng'
+              )}
             </Button>
           </form>
         </Form>

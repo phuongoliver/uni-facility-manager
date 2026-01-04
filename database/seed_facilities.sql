@@ -14,36 +14,37 @@ INSERT INTO users (sso_id, full_name, email, role, department, status)
 VALUES 
     -- Admin System
     ('ADM_SYS_02', 'System Administrator', 'sysadmin@uni.edu.vn', 'ADMIN', 'Facility Dept', 'ACTIVE'),
-    -- Outdoor Manager (Role ADMIN để có quyền cao nhất với sân bãi, hoặc LECTURER tùy policy)
-    ('MGR_SPORT', 'Nguyen Van The Thao', 'manager.sport@uni.edu.vn', 'ADMIN', 'Sports Center', 'ACTIVE'), 
+    -- Outdoor Manager (Role FACILITY_MANAGER để quản lý sân bãi)
+    ('MGR_SPORT', 'Nguyen Van The Thao', 'manager.sport@uni.edu.vn', 'FACILITY_MANAGER', 'Sports Center', 'ACTIVE'), 
     -- Lab Manager
     ('MGR_TECH', 'Tran Thi Ky Thuat', 'manager.lab@uni.edu.vn', 'LECTURER', 'Computer Science Faculty', 'ACTIVE')
 ON CONFLICT (sso_id) DO NOTHING;
 
 -- 3. Insert Facilities
 -- Sử dụng CTE để lấy ID của user vừa tạo (hoặc đã có)
+-- Schema: (name, location, type, capacity, image_url, price, price_type, transaction_type, status, manager_id)
 WITH 
     mgr_sport AS (SELECT user_id FROM users WHERE sso_id = 'MGR_SPORT'),
     mgr_tech AS (SELECT user_id FROM users WHERE sso_id = 'MGR_TECH'),
     adm_sys AS (SELECT user_id FROM users WHERE sso_id = 'ADM_SYS_02')
 
-INSERT INTO facilities (name, location, type, capacity, image_url, price_per_hour, status, manager_id)
+INSERT INTO facilities (name, location, type, capacity, image_url, price, price_type, transaction_type, status, manager_id)
 VALUES
     -- == OUTDOOR (Quản lý bởi MGR_SPORT) ==
-    ('Sân bóng đá Mini A', 'Khu thể thao phía Tây', 'OUTDOOR', 22, 'https://picsum.photos/seed/soccer/800/600', 300000, 'AVAILABLE', (SELECT user_id FROM mgr_sport)),
-    ('Sân bóng đá Mini B', 'Khu thể thao phía Tây', 'OUTDOOR', 22, 'https://picsum.photos/seed/soccer2/800/600', 300000, 'AVAILABLE', (SELECT user_id FROM mgr_sport)),
-    ('Sân cầu lông C1', 'Nhà thi đấu đa năng', 'OUTDOOR', 4, 'https://picsum.photos/seed/badminton/800/600', 50000, 'AVAILABLE', (SELECT user_id FROM mgr_sport)),
-    ('Hồ bơi Sinh viên', 'Khu Aquatic Center', 'OUTDOOR', 50, 'https://picsum.photos/seed/pool/800/600', 20000, 'AVAILABLE', (SELECT user_id FROM mgr_sport)),
+    ('Sân bóng đá Mini A', 'Khu thể thao phía Tây', 'OUTDOOR', 22, 'https://picsum.photos/seed/soccer/800/600', 300000, 'PER_HOUR', 'RENTAL_FEE', 'AVAILABLE', (SELECT user_id FROM mgr_sport)),
+    ('Sân bóng đá Mini B', 'Khu thể thao phía Tây', 'OUTDOOR', 22, 'https://picsum.photos/seed/soccer2/800/600', 300000, 'PER_HOUR', 'RENTAL_FEE', 'AVAILABLE', (SELECT user_id FROM mgr_sport)),
+    ('Sân cầu lông C1', 'Nhà thi đấu đa năng', 'OUTDOOR', 4, 'https://picsum.photos/seed/badminton/800/600', 50000, 'PER_HOUR', 'RENTAL_FEE', 'AVAILABLE', (SELECT user_id FROM mgr_sport)),
+    ('Hồ bơi Sinh viên', 'Khu Aquatic Center', 'OUTDOOR', 50, 'https://picsum.photos/seed/pool/800/600', 20000, 'PER_BOOKING', 'RENTAL_FEE', 'AVAILABLE', (SELECT user_id FROM mgr_sport)),
 
     -- == LAB/CLASSROOM (Quản lý bởi MGR_TECH) ==
-    ('Lab Máy tính H6', 'Tòa H, Tầng 6', 'LAB', 40, 'https://picsum.photos/seed/lab1/800/600', 150000, 'AVAILABLE', (SELECT user_id FROM mgr_tech)),
-    ('Phòng thực hành IoT', 'Tòa I, Tầng 2', 'LAB', 25, 'https://picsum.photos/seed/iot/800/600', 200000, 'AVAILABLE', (SELECT user_id FROM mgr_tech)),
-    ('AI Research Hub', 'Tòa Công nghệ cao', 'LAB', 15, 'https://picsum.photos/seed/ai/800/600', 500000, 'AVAILABLE', (SELECT user_id FROM mgr_tech)),
+    ('Lab Máy tính H6', 'Tòa H, Tầng 6', 'LAB', 40, 'https://picsum.photos/seed/lab1/800/600', 150000, 'PER_HOUR', 'RENTAL_FEE', 'AVAILABLE', (SELECT user_id FROM mgr_tech)),
+    ('Phòng thực hành IoT', 'Tòa I, Tầng 2', 'LAB', 25, 'https://picsum.photos/seed/iot/800/600', 200000, 'PER_HOUR', 'RENTAL_FEE', 'AVAILABLE', (SELECT user_id FROM mgr_tech)),
+    ('AI Research Hub', 'Tòa Công nghệ cao', 'LAB', 15, 'https://picsum.photos/seed/ai/800/600', 500000, 'PER_BOOKING', 'RENTAL_FEE', 'AVAILABLE', (SELECT user_id FROM mgr_tech)),
 
     -- == COMMON CLASSROOMS (Quản lý bởi Admin) ==
-    ('Phòng học A101', 'Tòa A, Tầng 1', 'CLASSROOM', 60, 'https://picsum.photos/seed/class1/800/600', 0, 'AVAILABLE', (SELECT user_id FROM adm_sys)), -- Free
-    ('Giảng đường Lớn Hall B', 'Tòa B', 'HALL', 300, 'https://picsum.photos/seed/hall/800/600', 1000000, 'AVAILABLE', (SELECT user_id FROM adm_sys)),
-    ('Phòng Seminar Thư viện', 'Thư viện trung tâm', 'CLASSROOM', 20, 'https://picsum.photos/seed/seminar/800/600', 50000, 'AVAILABLE', (SELECT user_id FROM adm_sys));
+    ('Phòng học A101', 'Tòa A, Tầng 1', 'CLASSROOM', 60, 'https://picsum.photos/seed/class1/800/600', 0, 'PER_HOUR', 'RENTAL_FEE', 'AVAILABLE', (SELECT user_id FROM adm_sys)), -- Free
+    ('Giảng đường Lớn Hall B', 'Tòa B', 'HALL', 300, 'https://picsum.photos/seed/hall/800/600', 1000000, 'PER_HOUR', 'RENTAL_FEE', 'AVAILABLE', (SELECT user_id FROM adm_sys)),
+    ('Phòng Seminar Thư viện', 'Thư viện trung tâm', 'CLASSROOM', 20, 'https://picsum.photos/seed/seminar/800/600', 50000, 'PER_BOOKING', 'RENTAL_FEE', 'AVAILABLE', (SELECT user_id FROM adm_sys));
 
 -- 4. Test Query
 -- Lấy danh sách Facility kèm tên User quản lý để kiểm tra quan hệ
@@ -52,7 +53,9 @@ SELECT
     f.name AS facility_name,
     f.type AS facility_type,
     f.capacity,
-    f.price_per_hour,
+    f.price,
+    f.price_type,
+    f.transaction_type,
     f.status,
     u.full_name AS manager_name,
     u.email AS manager_email,

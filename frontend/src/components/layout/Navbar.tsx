@@ -7,16 +7,17 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 
 export function Navbar() {
     const pathname = usePathname();
     const { user } = useAuth();
 
     const navItems = [
-        { label: "Trang chủ", href: "/" },
-        { label: "Mượn phòng", href: "/book-room" },
-        { label: "Mượn Thiết Bị", href: "/equipments" },
-        { label: "Lịch sử mượn", href: "/my-bookings" },
+        { label: "Home", href: "/" },
+        { label: "Book Facilities", href: "/book-room" },
+        { label: "Book Equipment", href: "/equipments" },
+        { label: "My Bookings", href: "/my-bookings" },
     ];
 
     return (
@@ -50,17 +51,29 @@ export function Navbar() {
 
             <div className="ml-auto flex items-center gap-4">
                 {user ? (
-                    <Link href="/my-bookings" className="flex items-center gap-2 hover:bg-gray-50 rounded-full px-2 py-1 transition-colors border border-transparent hover:border-gray-200">
-                        <span className="text-sm font-medium text-gray-700 hidden sm:block">{user.fullName}</span>
-                        <Avatar className="h-8 w-8 border border-gray-200">
-                            <AvatarImage src={`https://ui-avatars.com/api/?name=${user.fullName}&background=random`} />
-                            <AvatarFallback>{user.fullName.charAt(0)}</AvatarFallback>
-                        </Avatar>
-                    </Link>
+                    <div className="flex items-center gap-4">
+                        {['ADMIN', 'FACILITY_MANAGER'].includes(user.role) && (
+                            <Link href="/manage-facilities">
+                                <Button variant="ghost" className="text-primary font-semibold hover:bg-blue-50">
+                                    Manage
+                                </Button>
+                            </Link>
+                        )}
+
+                        <NotificationBell />
+
+                        <Link href="/my-bookings" className="flex items-center gap-2 hover:bg-gray-50 rounded-full px-2 py-1 transition-colors border border-transparent hover:border-gray-200">
+                            <span className="text-sm font-medium text-gray-700 hidden sm:block">{user.fullName}</span>
+                            <Avatar className="h-8 w-8 border border-gray-200">
+                                <AvatarImage src={`https://ui-avatars.com/api/?name=${user.fullName}&background=random`} />
+                                <AvatarFallback>{user.fullName.charAt(0)}</AvatarFallback>
+                            </Avatar>
+                        </Link>
+                    </div>
                 ) : (
                     <Link href="/login">
                         <Button variant="default" size="sm" className="bg-blue-600 hover:bg-blue-700 rounded-full px-6">
-                            Đăng nhập
+                            Login
                         </Button>
                     </Link>
                 )}

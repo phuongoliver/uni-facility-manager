@@ -1,6 +1,6 @@
 import { IsNotEmpty, IsInt, IsString, IsEnum, IsArray, ValidateNested, Min, Max, IsDateString, ValidatorConstraint, ValidatorConstraintInterface, ValidationArguments, Validate, IsOptional } from 'class-validator';
 import { Type } from 'class-transformer';
-import { BookingType } from '../../../common/enums/db-enums';
+import { BookingType, BookingStatus } from '../../../common/enums/db-enums';
 
 @ValidatorConstraint({ name: 'wordCount', async: false })
 export class WordCountValidator implements ValidatorConstraintInterface {
@@ -65,4 +65,8 @@ export class CreateBookingDto {
   @IsDateString()
   @IsOptional()
   recurrence_end_date?: string;
+
+  @IsEnum(BookingStatus)
+  @IsOptional()
+  status?: BookingStatus;
 }

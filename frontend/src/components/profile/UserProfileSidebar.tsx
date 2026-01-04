@@ -15,8 +15,8 @@ export function UserProfileSidebar() {
         return (
             <Card className="border-none shadow-sm">
                 <CardContent className="p-6 text-center">
-                    <p className="text-gray-500 mb-4">Bạn chưa đăng nhập.</p>
-                    <Button variant="outline" onClick={logout}>Đăng nhập ngay</Button>
+                    <p className="text-gray-500 mb-4">You are not logged in.</p>
+                    <Button variant="outline" onClick={logout}>Login now</Button>
                 </CardContent>
             </Card>
         )
@@ -77,7 +77,7 @@ export function UserProfileSidebar() {
                         onClick={logout}
                     >
                         <LogOut className="w-4 h-4 mr-2" />
-                        Đăng xuất
+                        Logout
                     </Button>
                 </div>
             </Card>
@@ -85,12 +85,12 @@ export function UserProfileSidebar() {
             {/* Helper Links or Stats could go here */}
             <Card className="border-none shadow-sm hidden md:block">
                 <CardHeader>
-                    <CardTitle className="text-sm font-medium">Trợ giúp</CardTitle>
+                    <CardTitle className="text-sm font-medium">Help</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2 text-sm text-gray-500">
-                    <p>Cần hỗ trợ? Liên hệ P.CSVC:</p>
+                    <p>Need help? Contact Fac. Mgr. Dept.:</p>
                     <div className="flex items-center gap-2 text-blue-600">
-                        <MapPin className="w-4 h-4" /> P. Quản trị Thiết bị
+                        <MapPin className="w-4 h-4" /> Facility Management Office
                     </div>
                 </CardContent>
             </Card>

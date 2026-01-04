@@ -7,8 +7,10 @@ import { BookingDetail } from './entities/booking-detail.entity';
 import { Facility } from '../facilities/entities/facility.entity';
 import { Equipment } from '../equipments/entities/equipment.entity';
 
+import { BookingGroup } from './entities/booking-group.entity';
+
 @Module({
-  imports: [TypeOrmModule.forFeature([Booking, BookingDetail, Facility, Equipment])],
+  imports: [TypeOrmModule.forFeature([Booking, BookingGroup, BookingDetail, Facility, Equipment])],
   controllers: [BookingsController],
   providers: [BookingsService],
   exports: [BookingsService],

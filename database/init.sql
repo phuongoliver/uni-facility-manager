@@ -9,12 +9,14 @@ SET timezone = 'Asia/Ho_Chi_Minh';
 
 -- 2. ENUM DEFINITIONS
 -- Sử dụng ENUM để đảm bảo Data Integrity (chỉ chấp nhận các giá trị hợp lệ)
-CREATE TYPE user_role AS ENUM ('STUDENT', 'LECTURER', 'ADMIN');
-CREATE TYPE facility_type AS ENUM ('CLASSROOM', 'HALL', 'LAB');
+-- [UPDATED] Added FACILITY_MANAGER
+CREATE TYPE user_role AS ENUM ('STUDENT', 'LECTURER', 'ADMIN', 'FACILITY_MANAGER');
+CREATE TYPE facility_type AS ENUM ('CLASSROOM', 'HALL', 'LAB', 'OUTDOOR');
 CREATE TYPE booking_type AS ENUM ('ACADEMIC', 'EVENT', 'PERSONAL');
-CREATE TYPE booking_status AS ENUM ('PENDING', 'APPROVED', 'REJECTED', 'CANCELLED', 'COMPLETED');
+CREATE TYPE booking_status AS ENUM ('PENDING', 'APPROVED', 'WAITING_PAYMENT', 'PENDING_RESCHEDULE', 'CONFIRMED', 'IN_USE', 'COMPLETED', 'CANCELLED', 'REJECTED', 'RESCHEDULED', 'ADMIN_HOLD', 'REVIEW_REQUIRED');
 CREATE TYPE equipment_status AS ENUM ('GOOD', 'BROKEN', 'MAINTENANCE');
 CREATE TYPE transaction_type AS ENUM ('DEPOSIT', 'RENTAL_FEE', 'FINE');
+CREATE TYPE price_type AS ENUM ('PER_HOUR', 'PER_BOOKING', 'ONE_TIME');
 CREATE TYPE payment_method AS ENUM ('MOMO', 'BANKING', 'CASH');
 CREATE TYPE transaction_status AS ENUM ('PENDING', 'PAID', 'REFUNDED');
 
@@ -23,7 +25,7 @@ CREATE TYPE transaction_status AS ENUM ('PENDING', 'PAID', 'REFUNDED');
 -- Table: Users
 CREATE TABLE users (
     user_id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    sso_id VARCHAR(50) UNIQUE NOT NULL,
+    sso_id VARCHAR(50) UNIQUE NOT NULL, -- Authentication managed by external SSO (Identity Provider)
     full_name VARCHAR(100) NOT NULL,
     email VARCHAR(100) UNIQUE NOT NULL,
     role user_role NOT NULL,
@@ -43,8 +45,11 @@ CREATE TABLE facilities (
     image_url TEXT,
     requires_approval BOOLEAN DEFAULT TRUE,
     status VARCHAR(20) DEFAULT 'AVAILABLE',
-    -- Master Data Price
-    price_per_hour DECIMAL(15, 2) DEFAULT 0 CHECK (price_per_hour >= 0)
+    -- Master Data Price (supports free facilities with price = 0)
+    price DECIMAL(15, 2) DEFAULT 0 CHECK (price >= 0),
+    price_type price_type DEFAULT 'PER_HOUR',
+    transaction_type transaction_type DEFAULT 'RENTAL_FEE',
+    min_cancellation_hours INT DEFAULT 1
 );
 
 -- Table: Equipment
@@ -70,16 +75,20 @@ CREATE TABLE bookings (
     check_in_time TIMESTAMPTZ NOT NULL,
     check_out_time TIMESTAMPTZ NOT NULL,
     total_amount DECIMAL(15, 2) DEFAULT 0,
+    cancellation_reason TEXT,
+    cancelled_at TIMESTAMPTZ,
+    recurrence_group_id UUID,
+    parent_booking_id INT REFERENCES bookings(booking_id) ON DELETE SET NULL, -- For reschedule requests (fork)
     created_at TIMESTAMPTZ DEFAULT NOW(),
     
     CONSTRAINT chk_time_valid CHECK (check_out_time > check_in_time),
     
     -- Không cho phép cùng Facility ID mà khoảng thời gian (Time Range) đè lên nhau (Overlaps &&)
-    -- Chỉ áp dụng khi booking chưa bị hủy hoặc từ chối
+    -- Chỉ áp dụng khi booking chưa bị hủy, từ chối hoặc đang chờ reschedule
     CONSTRAINT no_double_booking EXCLUDE USING GIST (
         facility_id WITH =,
         tstzrange(check_in_time, check_out_time) WITH &&
-    ) WHERE (status NOT IN ('CANCELLED', 'REJECTED'))
+    ) WHERE (status NOT IN ('CANCELLED', 'REJECTED', 'PENDING_RESCHEDULE', 'RESCHEDULED'))
 );
 -- Table: BookingDetail
 CREATE TABLE booking_details (
@@ -143,14 +152,16 @@ FOR EACH ROW
 EXECUTE FUNCTION snapshot_equipment_price();
 
 
--- B. Function: Tính toán tổng tiền (Core Logic)
+-- B. Function: Tính toán tổng tiền (Core Logic - supports multiple pricing types)
 CREATE OR REPLACE FUNCTION calculate_total_amount()
 RETURNS TRIGGER AS $$
 DECLARE
     v_booking_id INT;
     v_facility_price DECIMAL(15, 2);
+    v_facility_price_type price_type;
     v_equipment_total DECIMAL(15, 2);
     v_hours NUMERIC;
+    v_calculated_facility_cost DECIMAL(15, 2);
 BEGIN
     -- [FIX] Xác định booking_id dựa trên thao tác
     IF TG_TABLE_NAME = 'bookings' THEN
@@ -163,25 +174,37 @@ BEGIN
         END IF;
     END IF;
 
-    -- Các logic tính toán giữ nguyên...
-    -- 1. Tính tiền phòng
+    -- 1. Lấy thông tin giá phòng và loại giá
     SELECT 
-        f.price_per_hour,
+        f.price,
+        f.price_type,
         EXTRACT(EPOCH FROM (b.check_out_time - b.check_in_time)) / 3600
-    INTO v_facility_price, v_hours
+    INTO v_facility_price, v_facility_price_type, v_hours
     FROM bookings b
     JOIN facilities f ON b.facility_id = f.facility_id
     WHERE b.booking_id = v_booking_id;
 
-    -- 2. Tính tổng tiền thiết bị
+    -- 2. Tính tiền phòng dựa trên loại giá
+    CASE v_facility_price_type
+        WHEN 'PER_HOUR' THEN
+            v_calculated_facility_cost := v_facility_price * v_hours;
+        WHEN 'PER_BOOKING' THEN
+            v_calculated_facility_cost := v_facility_price; -- Fixed price per booking
+        WHEN 'ONE_TIME' THEN
+            v_calculated_facility_cost := v_facility_price; -- One-time fee
+        ELSE
+            v_calculated_facility_cost := v_facility_price * v_hours; -- Default to per hour
+    END CASE;
+
+    -- 3. Tính tổng tiền thiết bị
     SELECT COALESCE(SUM(quantity * booked_price), 0)
     INTO v_equipment_total
     FROM booking_details
     WHERE booking_id = v_booking_id;
 
-    -- 3. Update ngược lại vào Booking
+    -- 4. Update ngược lại vào Booking
     UPDATE bookings
-    SET total_amount = (v_facility_price * v_hours) + v_equipment_total
+    SET total_amount = v_calculated_facility_cost + v_equipment_total
     WHERE booking_id = v_booking_id;
 
     -- Return đúng quy tắc trigger
@@ -209,15 +232,17 @@ EXECUTE FUNCTION calculate_total_amount();
 
 -- Seed Users
 INSERT INTO users (sso_id, full_name, email, role, department) VALUES
-('20110456', 'Nguyen Van A', 'nguyenvana@university.edu.vn', 'STUDENT', 'Computer Science'),
-('T00123', 'Dr. Le Thi B', 'lethib@university.edu.vn', 'LECTURER', 'Software Engineering'),
-('ADM001', 'Tran Quan Ly', 'admin@university.edu.vn', 'ADMIN', 'Facility Department');
+('20110456', 'Nguyen Van Sinh Vien', 'student@university.edu.vn', 'STUDENT', 'Computer Science'),
+('T00123', 'Dr. Le Thi Giang Vien', 'lecturer@university.edu.vn', 'LECTURER', 'Software Engineering'),
+('ADM001', 'Tran Quan Ly', 'admin@university.edu.vn', 'ADMIN', 'Facility Department'),
+('MANAGER001', 'Pham Van Quan Ly CSVC', 'manager@university.edu.vn', 'FACILITY_MANAGER', 'Facility Operation');
 
--- Seed Facilities
-INSERT INTO facilities (name, location, type, capacity, price_per_hour) VALUES
-('Hall A1', 'Block A, Floor 1', 'HALL', 200, 500000), -- 500k/giờ
-('Lab Network', 'Block B, Floor 3', 'LAB', 40, 200000),   -- 200k/giờ
-('Room C202', 'Block C, Floor 2', 'CLASSROOM', 60, 100000); -- 100k/giờ
+-- Seed Facilities (with price and price_type)
+INSERT INTO facilities (name, location, type, capacity, price, price_type, manager_id) VALUES
+('Hall A1', 'Block A, Floor 1', 'HALL', 200, 500000, 'PER_HOUR', 3),       -- Per hour pricing
+('Lab Network', 'Block B, Floor 3', 'LAB', 40, 200000, 'PER_BOOKING', 4),  -- Fixed price per booking
+('Room C202', 'Block C, Floor 2', 'CLASSROOM', 60, 100000, 'PER_HOUR', 3), -- Per hour pricing
+('Soccer Field', 'Sports Zone', 'OUTDOOR', 22, 0, 'ONE_TIME', 4);          -- Free facility!
 
 -- Seed Equipments
 INSERT INTO equipments (facility_id, name, total_quantity, available_quantity, rental_price) VALUES
@@ -234,6 +259,5 @@ VALUES (1, 1, 'Club Meeting', 'EVENT', NOW() + INTERVAL '1 day', NOW() + INTERVA
 -- Bước 2: Insert Booking Detail (Mượn 2 loa)
 INSERT INTO booking_details (booking_id, equipment_id, quantity) VALUES
 (1, 2, 2); 
--- Trigger `trg_snapshot_price_before_insert` chạy: booked_price = 30,000
 -- Trigger `trg_update_total_on_detail_change` chạy: 
 -- Total cũ (1tr) + (2 loa * 30k) = 1,060,000 VND

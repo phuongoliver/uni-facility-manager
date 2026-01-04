@@ -12,7 +12,7 @@ async function bootstrap() {
     forbidNonWhitelisted: true, // Báo lỗi ngay nếu Frontend gửi field lạ
   }));
 
-  // 2. Đặt prefix cho API -> http://localhost:3000/api/bookings
+  // 2. Đặt prefix cho API -> http://localhost:3500/api/bookings
   app.setGlobalPrefix('api');
 
   // 3. Enable CORS (để Frontend Next.js gọi được)
@@ -22,7 +22,8 @@ async function bootstrap() {
     credentials: true,
   });
 
-  await app.listen(process.env.PORT ?? 3500);
+  const port = process.env.PORT || 3500;
+  await app.listen(port);
   console.log(`Application is running on: ${await app.getUrl()}`);
 }
 bootstrap();

@@ -1,4 +1,5 @@
 "use client";
+import { API_URL } from "@/lib/constants";
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { useRouter, usePathname } from "next/navigation";
 
@@ -14,6 +15,7 @@ interface User {
 interface AuthContextType {
     user: User | null;
     login: (ssoId?: string) => Promise<void>;
+    setSession: (user: User) => void;
     logout: () => void;
     isLoading: boolean;
     isAuthenticated: boolean;
@@ -38,7 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const login = async (ssoId: string = "20110456") => {
         try {
             // Call Mock API
-            const res = await fetch("http://localhost:3500/api/auth/login-mock", {
+            const res = await fetch(`${API_URL}/api/auth/login-mock`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ ssoId }),
@@ -49,8 +51,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setUser(data.user);
             localStorage.setItem("user", JSON.stringify(data.user));
 
-            // Redirect to previous page or home
-            router.push("/my-bookings");
+            // Redirect based on role
+            if (['ADMIN', 'FACILITY_MANAGER'].includes(data.user.role)) {
+                router.push("/manage-facilities");
+            } else {
+                router.push("/my-bookings");
+            }
         } catch (error) {
             console.error(error);
             alert("Đăng nhập thất bại. Vui lòng thử lại.");
@@ -63,8 +69,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         router.push("/login");
     };
 
+    const setSession = (user: User) => {
+        setUser(user);
+        localStorage.setItem("user", JSON.stringify(user));
+        // Redirect based on role
+        if (['ADMIN', 'FACILITY_MANAGER'].includes(user.role)) {
+            router.push("/manage-facilities");
+        } else {
+            router.push("/my-bookings");
+        }
+    };
+
     return (
-        <AuthContext.Provider value={{ user, login, logout, isLoading, isAuthenticated: !!user }}>
+        <AuthContext.Provider value={{ user, login, setSession, logout, isLoading, isAuthenticated: !!user }}>
             {children}
         </AuthContext.Provider>
     );

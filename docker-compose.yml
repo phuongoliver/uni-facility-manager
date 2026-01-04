@@ -20,7 +20,7 @@ services:
     networks:
       - uni-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin -d uni_facility_db"]
+      test: [ "CMD-SHELL", "pg_isready -U admin -d uni_facility_db" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -43,11 +43,11 @@ services:
       DATABASE_USER: admin
       DATABASE_PASSWORD: StrongPassword123!
       DATABASE_NAME: uni_facility_db
-      PORT: 3000
+      PORT: 3500
       # CORS setup cho Frontend
       ALLOWED_ORIGINS: "http://localhost:3001"
     ports:
-      - "3000:3000"
+      - "3500:3500"
     networks:
       - uni-network
 
@@ -64,7 +64,7 @@ services:
       - backend
     environment:
       # Biến môi trường Build-time (Next.js cần NEXT_PUBLIC_)
-      NEXT_PUBLIC_API_URL: http://localhost:3000
+      NEXT_PUBLIC_API_URL: http://localhost:3500
     ports:
       - "3001:3000" # Map port 3000 của container ra port 3001 của máy host
     networks:
@@ -72,6 +72,7 @@ services:
 
 volumes:
   postgres_data:
+
 
 networks:
   uni-network:

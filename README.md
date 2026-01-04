@@ -31,12 +31,12 @@ Dự án được xây dựng dựa trên kiến trúc Client-Server hiện đ�
 Hệ thống hoạt động theo mô hình 3 lớp (3-tier architecture):
 
 1.  **Presentation Layer (Frontend)**: 
-    - Chạy trên Next.js Server (Port 3000 trong container, Mapping ra 3001 máy host).
+    - Chạy trên Next.js Server (Port 3001).
     - Giao tiếp với Backend thông qua RESTful API.
     - Xử lý giao diện người dùng, form validation và trạng thái ứng dụng.
 
 2.  **Application Layer (Backend)**: 
-    - Chạy trên NestJS (Port 3000).
+    - Chạy trên NestJS (Port 3500).
     - Xử lý logic nghiệp vụ, xác thực (Authentication), phân quyền (Authorization).
     - Expose các API endpoint cho Frontend tiêu thụ.
 
@@ -60,7 +60,7 @@ Hệ thống hoạt động theo mô hình 3 lớp (3-tier architecture):
 
 2.  **Truy cập ứng dụng:**
     - **Frontend**: [http://localhost:3001](http://localhost:3001)
-    - **Backend API**: [http://localhost:3000](http://localhost:3000)
+    - **Backend API**: [http://localhost:3500](http://localhost:3500)
     - **Database**: Port `5432` (User: `admin`, Pass: `StrongPassword123!`, DB: `uni_facility_db`)
 
 3.  **Dừng hệ thống:**
@@ -95,7 +95,7 @@ npm install
 # Chạy server ở chế độ watch (development)
 npm run start:dev
 ```
-Backend sẽ chạy tại `http://localhost:3000`.
+Backend sẽ chạy tại `http://localhost:3500`.
 
 #### 3. Chạy Frontend
 Mở một terminal mới và di chuyển vào `frontend`:
@@ -109,7 +109,7 @@ npm install
 # Chạy Next.js dev server
 npm run dev
 ```
-Mặc định Next.js sẽ cũng thử chạy port 3000. Nếu Backend đang chiếm port 3000, Next.js thường sẽ tự động chuyển sang port 3001. Hãy kiểm tra terminal để biết port chính xác (thường là `http://localhost:3001`).
+Next.js sẽ chạy trên port 3001 (`http://localhost:3001`) để tránh conflict với các project khác.
 
 ## Cấu trúc thư mục
 
