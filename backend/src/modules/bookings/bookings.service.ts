@@ -3,6 +3,7 @@ import {
     BadRequestException,
     NotFoundException,
     ConflictException,
+    OnModuleInit,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import {
@@ -25,7 +26,7 @@ import { BookingStatus } from "./../../common/enums/db-enums";
 import { NotificationsService } from "../notifications/notifications.service";
 
 @Injectable()
-export class BookingsService {
+export class BookingsService implements OnModuleInit {
     constructor(
         @InjectRepository(Booking)
         private bookingsRepository: Repository<Booking>,
@@ -38,6 +39,74 @@ export class BookingsService {
         private dataSource: DataSource,
         private readonly notificationsService: NotificationsService,
     ) { }
+
+    async onModuleInit() {
+        // [HOTFIX] Patch the DB function to match Slot-based pricing (CEIL hours)
+        const query = `
+            CREATE OR REPLACE FUNCTION calculate_total_amount()
+            RETURNS TRIGGER AS $$
+            DECLARE
+                v_booking_id INT;
+                v_facility_price DECIMAL(15, 2);
+                v_facility_price_type price_type;
+                v_equipment_total DECIMAL(15, 2);
+                v_hours NUMERIC;
+                v_calculated_facility_cost DECIMAL(15, 2);
+            BEGIN
+                IF TG_TABLE_NAME = 'bookings' THEN
+                    v_booking_id := NEW.booking_id;
+                ELSIF TG_TABLE_NAME = 'booking_details' THEN
+                    IF (TG_OP = 'DELETE') THEN
+                        v_booking_id := OLD.booking_id;
+                    ELSE
+                        v_booking_id := NEW.booking_id;
+                    END IF;
+                END IF;
+
+                SELECT 
+                    f.price,
+                    f.price_type,
+                    EXTRACT(EPOCH FROM (b.check_out_time - b.check_in_time)) / 3600
+                INTO v_facility_price, v_facility_price_type, v_hours
+                FROM bookings b
+                JOIN facilities f ON b.facility_id = f.facility_id
+                WHERE b.booking_id = v_booking_id;
+
+                CASE v_facility_price_type
+                    WHEN 'PER_HOUR' THEN
+                        v_calculated_facility_cost := v_facility_price * CEIL(v_hours);
+                    WHEN 'PER_BOOKING' THEN
+                        v_calculated_facility_cost := v_facility_price;
+                    WHEN 'ONE_TIME' THEN
+                        v_calculated_facility_cost := v_facility_price;
+                    ELSE
+                        v_calculated_facility_cost := v_facility_price * CEIL(v_hours);
+                END CASE;
+
+                SELECT COALESCE(SUM(quantity * booked_price), 0)
+                INTO v_equipment_total
+                FROM booking_details
+                WHERE booking_id = v_booking_id;
+
+                UPDATE bookings
+                SET total_amount = v_calculated_facility_cost + v_equipment_total
+                WHERE booking_id = v_booking_id;
+
+                IF (TG_OP = 'DELETE') THEN
+                    RETURN OLD;
+                ELSE
+                    RETURN NEW;
+                END IF;
+            END;
+            $$ LANGUAGE plpgsql;
+        `;
+        try {
+            await this.dataSource.query(query);
+            console.log("Database function 'calculate_total_amount' patched successfully.");
+        } catch (error) {
+            console.error("Failed to patch database function:", error);
+        }
+    }
 
     private getSlotTime(date: string, slot: number): { start: Date; end: Date } {
         const startHour = 7 + (slot - 1);
@@ -180,7 +249,7 @@ export class BookingsService {
                     status: In([
                         BookingStatus.APPROVED,
                         BookingStatus.CONFIRMED,
-                        BookingStatus.WAITING_PAYMENT,
+                        BookingStatus.PENDING_PAYMENT,
                         BookingStatus.IN_USE,
                     ]), // Check waiting payment too to avoid double book
                     checkInTime: LessThan(checkOutTime),
@@ -215,7 +284,7 @@ export class BookingsService {
                     // Start as PENDING normally
                     booking.status = BookingStatus.PENDING;
                     // If we wanted single bookings to also be upfront pay:
-                    // if (totalBookingAmount > 0) booking.status = BookingStatus.WAITING_PAYMENT;
+                    // if (totalBookingAmount > 0) booking.status = BookingStatus.PENDING_PAYMENT;
                 }
             }
 
@@ -414,7 +483,7 @@ export class BookingsService {
     /**
      * Approve Reschedule Request:
      * 1. Original booking → RESCHEDULED
-     * 2. New booking → CONFIRMED (or WAITING_PAYMENT if paid facility)
+     * 2. New booking → CONFIRMED (or PENDING_PAYMENT if paid facility)
      */
     async approveReschedule(rescheduleBookingId: number, _managerId: number) {
         const rescheduleBooking = await this.bookingsRepository.findOne({
@@ -441,7 +510,7 @@ export class BookingsService {
                 facilityId: rescheduleBooking.facilityId,
                 status: In([
                     BookingStatus.APPROVED,
-                    BookingStatus.WAITING_PAYMENT,
+                    BookingStatus.PENDING_PAYMENT,
                     BookingStatus.CONFIRMED,
                 ]),
                 checkInTime: LessThan(rescheduleBooking.checkOutTime),
@@ -478,7 +547,7 @@ export class BookingsService {
             if (facilityPrice === 0) {
                 rescheduleBooking.status = BookingStatus.CONFIRMED;
             } else {
-                rescheduleBooking.status = BookingStatus.WAITING_PAYMENT;
+                rescheduleBooking.status = BookingStatus.PENDING_PAYMENT;
             }
 
             const result = await queryRunner.manager.save(rescheduleBooking);
@@ -637,7 +706,7 @@ export class BookingsService {
                         facilityId: b.facilityId,
                         status: In([
                             BookingStatus.APPROVED,
-                            BookingStatus.WAITING_PAYMENT,
+                            BookingStatus.PENDING_PAYMENT,
                             BookingStatus.CONFIRMED,
                         ]),
                         checkInTime: LessThan(b.checkOutTime),
@@ -660,7 +729,7 @@ export class BookingsService {
             const newStatus =
                 facilityPrice === 0
                     ? BookingStatus.CONFIRMED
-                    : BookingStatus.WAITING_PAYMENT;
+                    : BookingStatus.PENDING_PAYMENT;
 
             // Update Group and Bookings
             await this.dataSource.manager.update(
@@ -689,7 +758,7 @@ export class BookingsService {
                 facilityId: booking.facilityId,
                 status: In([
                     BookingStatus.APPROVED,
-                    BookingStatus.WAITING_PAYMENT,
+                    BookingStatus.PENDING_PAYMENT,
                     BookingStatus.CONFIRMED,
                 ]),
                 checkInTime: LessThan(booking.checkOutTime),
@@ -709,8 +778,8 @@ export class BookingsService {
             // Free facility - go directly to CONFIRMED
             booking.status = BookingStatus.CONFIRMED;
         } else {
-            // Paid facility - go to WAITING_PAYMENT
-            booking.status = BookingStatus.WAITING_PAYMENT;
+            // Paid facility - go to PENDING_PAYMENT
+            booking.status = BookingStatus.PENDING_PAYMENT;
         }
 
         const saved = await this.bookingsRepository.save(booking);
@@ -738,9 +807,9 @@ export class BookingsService {
             );
         }
 
-        if (booking.status !== BookingStatus.WAITING_PAYMENT) {
+        if (booking.status !== BookingStatus.PENDING_PAYMENT) {
             throw new BadRequestException(
-                `Booking must be WAITING_PAYMENT to confirm payment. Current: ${booking.status}`,
+                `Booking must be PENDING_PAYMENT to confirm payment. Current: ${booking.status}`,
             );
         }
 
@@ -820,7 +889,7 @@ export class BookingsService {
                 status: In([
                     BookingStatus.APPROVED,
                     BookingStatus.PENDING,
-                    BookingStatus.WAITING_PAYMENT,
+                    BookingStatus.PENDING_PAYMENT,
                     BookingStatus.PENDING_RESCHEDULE,
                     BookingStatus.CONFIRMED,
                     BookingStatus.IN_USE,

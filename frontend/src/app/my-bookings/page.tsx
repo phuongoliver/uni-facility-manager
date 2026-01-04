@@ -322,7 +322,7 @@ export default function MyBookingsPage() {
             case "APPROVED": return "bg-green-100 text-green-700 hover:bg-green-100/80";
             case "CONFIRMED": return "bg-green-100 text-green-700 hover:bg-green-100/80";
             case "PENDING": return "bg-yellow-100 text-yellow-700 hover:bg-yellow-100/80";
-            case "WAITING_PAYMENT": return "bg-amber-100 text-amber-700 hover:bg-amber-100/80";
+            case "PENDING_PAYMENT": return "bg-amber-100 text-amber-700 hover:bg-amber-100/80";
             case "PENDING_RESCHEDULE": return "bg-indigo-100 text-indigo-700 hover:bg-indigo-100/80";
             case "REJECTED": return "bg-red-100 text-red-700 hover:bg-red-100/80";
             case "CANCELLED": return "bg-gray-100 text-gray-700 hover:bg-gray-100/80";
@@ -340,7 +340,7 @@ export default function MyBookingsPage() {
             case "APPROVED": return "Approved";
             case "CONFIRMED": return "Confirmed";
             case "PENDING": return "Pending";
-            case "WAITING_PAYMENT": return "Waiting Payment";
+            case "PENDING_PAYMENT": return "Waiting Payment";
             case "PENDING_RESCHEDULE": return "Pending Reschedule";
             case "REJECTED": return "Rejected";
             case "CANCELLED": return "Cancelled";
@@ -397,7 +397,7 @@ export default function MyBookingsPage() {
 
     // Calculate aggregated payments for the Payments Tab
     const paymentGroups = React.useMemo(() => {
-        const waiting = bookings.filter(b => b.status === 'WAITING_PAYMENT');
+        const waiting = bookings.filter(b => b.status === 'PENDING_PAYMENT');
         const groups: { [key: string]: Booking[] } = {};
         const singles: Booking[] = [];
 
@@ -527,7 +527,7 @@ export default function MyBookingsPage() {
                                                 onClick={() => handleRowClick(booking)}
                                                 className={`text-[10px] px-1.5 py-0.5 rounded border truncate cursor-pointer hover:opacity-80
                                                     ${booking.status === 'CONFIRMED' || booking.status === 'APPROVED' ? 'bg-green-50 text-green-700 border-green-200' :
-                                                        booking.status === 'WAITING_PAYMENT' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                                        booking.status === 'PENDING_PAYMENT' ? 'bg-amber-50 text-amber-700 border-amber-200' :
                                                             booking.status === 'CANCELLED' || booking.status === 'REJECTED' ? 'bg-gray-100 text-gray-500 border-gray-200 line-through' :
                                                                 'bg-blue-50 text-blue-700 border-blue-200'
                                                     }`}
@@ -898,8 +898,8 @@ export default function MyBookingsPage() {
                             >
                                 Close
                             </Button>
-                            {/* WAITING_PAYMENT: Show Pay Button */}
-                            {selectedBooking.status === 'WAITING_PAYMENT' && (
+                            {/* PENDING_PAYMENT: Show Pay Button */}
+                            {selectedBooking.status === 'PENDING_PAYMENT' && (
                                 <>
                                     <Button
                                         onClick={() => handleInitiatePayment(selectedBooking)}

@@ -142,7 +142,7 @@ export default function ManageFacilitiesPage() {
             }
             else if (category === 'history') {
                 const statusQuery = historyFilter === 'ALL'
-                    ? 'status=APPROVED&status=WAITING_PAYMENT&status=PENDING_RESCHEDULE&status=CONFIRMED&status=REJECTED&status=CANCELLED&status=RESCHEDULED&status=COMPLETED&status=IN_USE&status=ADMIN_HOLD&status=REVIEW_REQUIRED'
+                    ? 'status=APPROVED&status=PENDING_PAYMENT&status=PENDING_RESCHEDULE&status=CONFIRMED&status=REJECTED&status=CANCELLED&status=RESCHEDULED&status=COMPLETED&status=IN_USE&status=ADMIN_HOLD&status=REVIEW_REQUIRED'
                     : `status=${historyFilter}`;
                 endpoint = `api/bookings/manager?managerId=${user!.userId}&page=${bookingPage}&limit=10&${statusQuery}`;
             }
@@ -408,7 +408,7 @@ export default function ManageFacilitiesPage() {
                             )}
                             {activeCategory === 'history' && (
                                 <div className="flex bg-white p-1 rounded-lg border border-gray-200 flex-wrap gap-1">
-                                    {['ALL', 'PENDING_RESCHEDULE', 'WAITING_PAYMENT', 'APPROVED', 'CONFIRMED', 'REJECTED', 'CANCELLED', 'COMPLETED'].map((status) => (
+                                    {['ALL', 'PENDING_RESCHEDULE', 'PENDING_PAYMENT', 'APPROVED', 'CONFIRMED', 'REJECTED', 'CANCELLED', 'COMPLETED'].map((status) => (
                                         <button
                                             key={status}
                                             onClick={() => {
@@ -423,7 +423,7 @@ export default function ManageFacilitiesPage() {
                                             )}
                                         >
                                             {status === 'ALL' ? 'All History' :
-                                                status === 'WAITING_PAYMENT' ? 'Waiting Payment' :
+                                                status === 'PENDING_PAYMENT' ? 'Waiting Payment' :
                                                     status === 'PENDING_RESCHEDULE' ? 'Reschedule Req' :
                                                         status.charAt(0) + status.slice(1).toLowerCase().replace('_', ' ')}
                                         </button>
@@ -1436,7 +1436,7 @@ function StatusBadge({ status }: { status: string }) {
             colorClass = "bg-orange-100 text-orange-700 border-orange-200";
             label = "Review Required";
             break;
-        case 'WAITING_PAYMENT':
+        case 'PENDING_PAYMENT':
             colorClass = "bg-amber-100 text-amber-700 border-amber-200";
             label = "Waiting Payment";
             break;
@@ -1520,6 +1520,12 @@ function AddFacilityModal({ isOpen, onClose, onSuccess, user, initialData }: { i
         // Client side basic validation
         if (!formData.name || !formData.capacity) {
             setError("Name and Capacity are required.");
+            setIsSubmitting(false);
+            return;
+        }
+
+        if (formData.price < 0) {
+            setError("Price cannot be negative.");
             setIsSubmitting(false);
             return;
         }
@@ -1643,7 +1649,10 @@ function AddFacilityModal({ isOpen, onClose, onSuccess, user, initialData }: { i
                                 step="1000"
                                 className="w-full h-9 rounded-md border border-gray-300 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 value={formData.price}
-                                onChange={(e) => setFormData({ ...formData, price: parseInt(e.target.value) || 0 })}
+                                onChange={(e) => {
+                                    const val = parseFloat(e.target.value);
+                                    setFormData({ ...formData, price: isNaN(val) ? 0 : val });
+                                }}
                             />
                         </div>
                     </div>
