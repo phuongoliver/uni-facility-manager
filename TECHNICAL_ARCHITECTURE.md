@@ -3,79 +3,79 @@ Project: **University Facility Manager**
 
 ## 1. Architectural Pattern: Modular Monolith
 
-Dự án được xây dựng dựa trên kiến trúc **Modular Monolith**. Thay vì chia nhỏ thành các Microservices ngay từ đầu (gây phức tạp về hạ tầng và deploy), hoặc một Monolith hỗn độn (Spaghetti code), Modular Monolith giúp tổ chức source code thành các Module độc lập xoay quanh các *Domain Business* cụ thể.
+The project is built upon the **Modular Monolith** architecture. Instead of splitting into Microservices from the start (which introduces infrastructure and deployment complexity) or creating a chaotic Monolith (Spaghetti code), Modular Monolith organizes source code into independent modules centered around specific *Domain Businesses*.
 
-### Tại sao chọn Modular Monolith?
-*   **High Cohesion, Low Coupling**: Các logic liên quan được gom lại trong một module.
-*   **Ví dụ điển hình - Tách biệt Booking và Payment**: 
-    *   Module `Booking` chỉ quan tâm đến việc giữ chỗ, kiểm tra lịch trống và quản lý trạng thái đặt phòng.
-    *   Module `Payment` chịu trách nhiệm xử lý giao dịch tiền tệ, tích hợp cổng thanh toán.
-    *   **Lợi ích**: Khi thay đổi logic tính tiền hoặc thay đổi cổng thanh toán (Payment Gateway), module `Booking` hoàn toàn không bị ảnh hưởng. Dễ dàng bảo trì, debug (khoanh vùng lỗi) và có thể tách thành Microservices riêng biệt trong tương lai nếu cần scale.
-
----
-
-## 2. Cơ sở dữ liệu (Database): PostgreSQL
-
-PostgreSQL được lựa chọn vì tính mạnh mẽ, tuân thủ ACID và hỗ trợ các tính năng nâng cao (Trigger, Stored Procedures, Advanced Indexing) giúp logic toàn vẹn dữ liệu được đảm bảo ngay từ tầng DB.
-
-### Tối ưu hóa truy vấn (Performance & Indexing)
-Việc đánh Index trong dự án không phải ngẫu nhiên mà tập trung vào các "điểm nóng" truy vấn:
-*   **Composite Index `(check_in_time, check_out_time)`**: Đây là index quan trọng nhất. Mọi thao tác tìm kiếm phòng trống, kiểm tra lịch trùng đều phải quét qua khoảng thời gian này. Index giúp Database không phải scan toàn bộ bảng.
-*   **Foreign Key Index `(user_id, facility_id)`**: Tối ưu hóa các câu lệnh `JOIN` khi lấy lịch sử đặt phòng của user hoặc danh sách booking của một phòng.
-*   **Status Index**: Giúp bộ lọc (Filter) theo trạng thái (PENDING, CONFIRMED...) ở Dashboard quản lý diễn ra tức thì.
+### Why Modular Monolith?
+*   **High Cohesion, Low Coupling**: Related logic is grouped within a single module.
+*   **Typical Example - Separating Booking and Payment**:
+    *   The `Booking` module is solely responsible for reservations, availability checks, and booking status management.
+    *   The `Payment` module handles financial transactions and payment gateway integration.
+    *   **Benefit**: When payment logic changes or a Payment Gateway is switched, the `Booking` module remains completely unaffected. It ensures easier maintenance, debugging (fault isolation), and allows for splitting into separate Microservices in the future if scaling is required.
 
 ---
 
-## 3. Tích hợp hệ thống (System Integration)
+## 2. Database: PostgreSQL
 
-Hệ thống giao tiếp với thế giới bên ngoài và frontend thông qua các chuẩn giao thức hiện đại:
+PostgreSQL was chosen for its robustness, ACID compliance, and support for advanced features (Triggers, Stored Procedures, Advanced Indexing) which ensure data integrity logic is enforced effectively at the DB layer.
 
-*   **RESTful API**: Giao thức chính để Frontend (Next.js) giao tiếp với Backend (NestJS). API được thiết kế theo Resource-oriented (VD: `POST /api/bookings`, `GET /api/facilities`).
+### Query Optimization (Performance & Indexing)
+Indexing in this project is not arbitrary but focused on query "hotspots":
+*   **Composite Index `(check_in_time, check_out_time)`**: This is the most critical index. Every operation involving availability checks or conflict detection must scan this time range. The index prevents the Database from performing a full table scan.
+*   **Foreign Key Index `(user_id, facility_id)`**: Optimizes `JOIN` operations when retrieving user booking history or a facility's booking list.
+*   **Status Index**: Ensures that filtering by status (PENDING, CONFIRMED...) on the management Dashboard is instantaneous.
+
+---
+
+## 3. System Integration
+
+The system communicates with the external world and the frontend via modern standard protocols:
+
+*   **RESTful API**: The primary protocol for Frontend (Next.js) to Backend (NestJS) communication. The API is designed in a Resource-oriented manner (e.g., `POST /api/bookings`, `GET /api/facilities`).
 *   **SSO - Single Sign-On (OAuth2)**:
-    *   Tích hợp login tập trung (Centralized Authentication) giả lập hệ thống của trường đại học.
-    *   Sử dụng luồng OAuth2 Authorization Code Flow để bảo mật, không lưu password người dùng trong DB của ứng dụng.
-*   **Webhooks**: 
-    *   Được thiết kế để xử lý **Asynchronous Payment**. Ví dụ: Khi người dùng thanh toán qua Ví điện tử/Banking, cổng thanh toán sẽ gọi lại (callback/webhook) vào hệ thống để cập nhật trạng thái đơn hàng mà không cần user phải giữ kết nối.
+    *   Integrates centralized authentication simulating a university system.
+    *   Uses the OAuth2 Authorization Code Flow for security, ensuring user passwords are not stored in the application DB.
+*   **Webhooks**:
+    *   Designed handling **Asynchronous Payments**. Example: When a user pays via E-wallet/Banking, the payment gateway calls back (webhook) to the system to update the order status without requiring the user to maintain an active connection.
 
 ---
 
-## 4. Kỹ thuật áp dụng (Implementation Techniques)
+## 4. Implementation Techniques
 
-Project sử dụng các Design Pattern cổ điển để tăng tính linh hoạt (Flexibility) và dễ mở rộng (Extensibility):
+The project employs classic Design Patterns to enhance flexibility and extensibility:
 
 ### A. Strategy Pattern
-*   **Áp dụng**: Module Authentication.
-*   **Mục đích**: Hệ thống có thể hỗ trợ nhiều phương thức đăng nhập khác nhau (Local User, Google OAuth, University SSO) mà `AuthService` không cần sửa đổi logic chính (`Open-Closed Principle`). Ta chỉ cần switch "Strategy" tương ứng.
+*   **Application**: Authentication Module.
+*   **Purpose**: The system can support multiple login methods (Local User, Google OAuth, University SSO) without modifying the core `AuthService` logic (`Open-Closed Principle`). We simply switch to the corresponding "Strategy".
 
 ### B. Factory Pattern
-*   **Áp dụng**: Logic khởi tạo Booking hoặc xử lý dữ liệu từ các nguồn khác nhau.
-*   **Mục đích**: Đóng gói sự phức tạp khi tạo ra các đối tượng Booking phức tạp (có kèm Equipment, có Recurrence/Lặp lại).
+*   **Application**: Booking initialization logic or data processing from various sources.
+*   **Purpose**: Encapsulates the complexity of creating complex Booking objects (which may include Equipment, Recurrence/Repetition).
 
 ### C. Observer Pattern (Event-Driven)
-*   **Áp dụng**: Hệ thống Notification.
-*   **Mục đích**: Khi một Booking được tạo thành công (`BookingCreated`), Service sẽ "bắn" ra một Event. Module Notification sẽ "lắng nghe" event này để gửi email/thông báo.
-*   **Lợi ích**: Module Booking không cần biết đến sự tồn tại của Email Service. Nếu sau này muốn thêm chức năng "Gửi SMS", chỉ cần thêm một Listener mới mà không cần sửa code cũ.
+*   **Application**: Notification System.
+*   **Purpose**: When a Booking is successfully created (`BookingCreated`), the Service emits an Event. The Notification Module "listens" to this event to send emails/notifications.
+*   **Benefit**: The Booking Module does not need to know about the existence of the Email Service. To add an "SMS Sending" function later, simply add a new Listener without modifying old code.
 
 ---
 
-## 5. Giải quyết bài toán Overbooking (Concurrency Control)
+## 5. Solving Overbooking (Concurrency Control)
 
-Một trong những vấn đề khó nhất của hệ thống đặt phòng là **Race Condition**: Hai sinh viên cùng bấm nút "Đặt phòng" tại đúng một thời điểm cho cùng một phòng.
+One of the hardest problems in booking systems is the **Race Condition**: Two students hitting the "Book" button at the exact same moment for the same room.
 
-### Giải pháp: Database Locking & Constraints
-Thay vì chỉ kiểm tra ở tầng ứng dụng (Application Layer - vốn không tin cậy khi chạy nhiều instance), project áp dụng các lớp bảo vệ tại Database:
+### Solution: Database Locking & Constraints
+Instead of relying solely on application-layer checks (which are unreliable when running multiple instances), the project applies protection layers at the Database level:
 
-1.  **Pessimistic Locking (FOR UPDATE)**: (Tùy chọn áp dụng trong Code) Khi bắt đầu giao dịch đặt phòng, row dữ liệu của Facility hoặc Slot thời gian đó bị khóa. Các transaction khác phải chờ.
-2.  **PostgreSQL EXCLUDE Constraint (Giải pháp chính)**:
-    *   Sử dụng tính năng `EXCLUDE USING GIST` của PostgreSQL.
-    *   Định nghĩa: *"Không cho phép 2 dòng dữ liệu có cùng `facility_id` mà khoảng thời gian `[check_in, check_out]` giao nhau (overlaps &&)"*.
-    *   Đây là chốt chặn cuối cùng và mạnh mẽ nhất. Nếu code logic lọt lưới, Database sẽ throw error ngay lập tức, đảm bảo Data Integrity tuyệt đối.
+1.  **Pessimistic Locking (FOR UPDATE)**: (Optionally applied in Code) When a booking transaction starts, the Facility row or Time Slot is locked. Other transactions must wait.
+2.  **PostgreSQL EXCLUDE Constraint (Primary Solution)**:
+    *   Utilizes PostgreSQL's `EXCLUDE USING GIST`.
+    *   Definition: *"Do not allow 2 rows with the same `facility_id` where the time range `[check_in, check_out]` overlaps (&&)"*.
+    *   This is the final and strongest line of defense. If logic errors slip through the code, the Database will throw an error immediately, ensuring absolute Data Integrity.
 
 ---
 
-## 6. Các công nghệ khác (Tech Stack Overview)
+## 6. Tech Stack Overview
 
 *   **Frontend**: Next.js 15 (App Router), TailwindCSS, Shadcn/UI, Lucide React.
 *   **Backend**: NestJS (Node.js framework), TypeORM.
-*   **Containerization**: Docker & Docker Compose (Giúp setup môi trường dev/prod đồng nhất).
+*   **Containerization**: Docker & Docker Compose (Ensures consistent dev/prod environments).
 *   **Validation**: Zod (Frontend), Class-Validator (Backend DTO).
