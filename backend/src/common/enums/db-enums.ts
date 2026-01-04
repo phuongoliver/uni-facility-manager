@@ -1,12 +1,13 @@
 export enum UserRole {
   STUDENT = "STUDENT",
-  LECTURER = "LECTURER",
+  FACILITY_MANAGER = "FACILITY_MANAGER",
   ADMIN = "ADMIN",
 }
 export enum FacilityType {
   CLASSROOM = "CLASSROOM",
   HALL = "HALL",
   LAB = "LAB",
+  OUTDOOR = "OUTDOOR",
 }
 export enum BookingType {
   ACADEMIC = "ACADEMIC",
@@ -16,7 +17,7 @@ export enum BookingType {
 export enum BookingStatus {
   PENDING = "PENDING",
   APPROVED = "APPROVED",
-  WAITING_PAYMENT = "WAITING_PAYMENT",
+  PENDING_PAYMENT = "PENDING_PAYMENT",
   PENDING_RESCHEDULE = "PENDING_RESCHEDULE",
   CONFIRMED = "CONFIRMED",
   IN_USE = "IN_USE",

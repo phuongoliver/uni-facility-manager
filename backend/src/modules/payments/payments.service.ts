@@ -47,7 +47,7 @@ export class PaymentsService {
   constructor(
     @InjectRepository(Booking)
     private bookingsRepository: Repository<Booking>,
-  ) {}
+  ) { }
 
   /**
    * Generate unique transaction reference
@@ -102,9 +102,9 @@ export class PaymentsService {
       );
     }
 
-    if (booking.status !== BookingStatus.WAITING_PAYMENT) {
+    if (booking.status !== BookingStatus.PENDING_PAYMENT) {
       throw new BadRequestException(
-        `Booking must be WAITING_PAYMENT to initiate payment. Current: ${booking.status}`,
+        `Booking must be PENDING_PAYMENT to initiate payment. Current: ${booking.status}`,
       );
     }
 

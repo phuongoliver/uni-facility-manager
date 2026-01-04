@@ -10,10 +10,10 @@ SET timezone = 'Asia/Ho_Chi_Minh';
 -- 2. ENUM DEFINITIONS
 -- Sử dụng ENUM để đảm bảo Data Integrity (chỉ chấp nhận các giá trị hợp lệ)
 -- [UPDATED] Added FACILITY_MANAGER
-CREATE TYPE user_role AS ENUM ('STUDENT', 'LECTURER', 'ADMIN', 'FACILITY_MANAGER');
+CREATE TYPE user_role AS ENUM ('STUDENT', 'ADMIN', 'FACILITY_MANAGER');
 CREATE TYPE facility_type AS ENUM ('CLASSROOM', 'HALL', 'LAB', 'OUTDOOR');
 CREATE TYPE booking_type AS ENUM ('ACADEMIC', 'EVENT', 'PERSONAL');
-CREATE TYPE booking_status AS ENUM ('PENDING', 'APPROVED', 'WAITING_PAYMENT', 'PENDING_RESCHEDULE', 'CONFIRMED', 'IN_USE', 'COMPLETED', 'CANCELLED', 'REJECTED', 'RESCHEDULED', 'ADMIN_HOLD', 'REVIEW_REQUIRED');
+CREATE TYPE booking_status AS ENUM ('PENDING', 'APPROVED', 'PENDING_PAYMENT', 'PENDING_RESCHEDULE', 'CONFIRMED', 'IN_USE', 'COMPLETED', 'CANCELLED', 'REJECTED', 'RESCHEDULED', 'ADMIN_HOLD', 'REVIEW_REQUIRED');
 CREATE TYPE equipment_status AS ENUM ('GOOD', 'BROKEN', 'MAINTENANCE');
 CREATE TYPE transaction_type AS ENUM ('DEPOSIT', 'RENTAL_FEE', 'FINE');
 CREATE TYPE price_type AS ENUM ('PER_HOUR', 'PER_BOOKING', 'ONE_TIME');
@@ -199,7 +199,7 @@ BEGIN
     -- 2. Tính tiền phòng dựa trên loại giá
     CASE v_facility_price_type
         WHEN 'PER_HOUR' THEN
-            v_calculated_facility_cost := v_facility_price * v_hours;
+            v_calculated_facility_cost := v_facility_price * CEIL(v_hours);
         WHEN 'PER_BOOKING' THEN
             v_calculated_facility_cost := v_facility_price; -- Fixed price per booking
         WHEN 'ONE_TIME' THEN
@@ -288,9 +288,9 @@ VALUES (2, 5, $$Student Union Meeting$$, 'EVENT', 'PENDING', NOW() + INTERVAL '3
 
 -- 4. Waiting Payment Booking (Student 1)
 INSERT INTO bookings (user_id, facility_id, purpose, booking_type, status, check_in_time, check_out_time) 
-VALUES (1, 7, $$Tennis Match with friends$$, 'PERSONAL', 'WAITING_PAYMENT', NOW() + INTERVAL '1 day' + INTERVAL '17 hours', NOW() + INTERVAL '1 day' + INTERVAL '19 hours');
+VALUES (1, 7, $$Tennis Match with friends$$, 'PERSONAL', 'PENDING_PAYMENT', NOW() + INTERVAL '1 day' + INTERVAL '17 hours', NOW() + INTERVAL '1 day' + INTERVAL '19 hours');
 -- Add equipment to this one
-INSERT INTO booking_details (booking_id, equipment_id, quantity) VALUES ((SELECT booking_id FROM bookings WHERE status='WAITING_PAYMENT' LIMIT 1), 3, 1);
+INSERT INTO booking_details (booking_id, equipment_id, quantity) VALUES ((SELECT booking_id FROM bookings WHERE status='PENDING_PAYMENT' LIMIT 1), 3, 1);
 
 -- 5. Rejected Booking (Student 3)
 INSERT INTO bookings (user_id, facility_id, purpose, booking_type, status, check_in_time, check_out_time, cancellation_reason, cancelled_at) 
