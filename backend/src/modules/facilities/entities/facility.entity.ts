@@ -1,12 +1,16 @@
-import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
-import { FacilityType, PriceType, TransactionType } from '../../../common/enums/db-enums';
+import { Entity, PrimaryGeneratedColumn, Column } from "typeorm";
+import {
+  FacilityType,
+  PriceType,
+  TransactionType,
+} from "../../../common/enums/db-enums";
 
-@Entity('facilities')
+@Entity("facilities")
 export class Facility {
-  @PrimaryGeneratedColumn('identity', { name: 'facility_id' })
+  @PrimaryGeneratedColumn("identity", { name: "facility_id" })
   facilityId: number;
 
-  @Column({ name: 'manager_id', nullable: true })
+  @Column({ name: "manager_id", nullable: true })
   managerId: number;
 
   @Column()
@@ -15,30 +19,46 @@ export class Facility {
   @Column({ nullable: true })
   location: string;
 
-  @Column({ type: 'enum', enum: FacilityType })
+  @Column({ type: "enum", enum: FacilityType })
   type: FacilityType;
 
   @Column()
   capacity: number;
 
-  @Column({ name: 'image_url', nullable: true })
+  @Column({ name: "image_url", nullable: true })
   imageUrl: string;
 
-  @Column({ name: 'requires_approval', default: true })
+  @Column({ name: "requires_approval", default: true })
   requiresApproval: boolean;
 
-  @Column({ default: 'AVAILABLE' })
+  @Column({ default: "AVAILABLE" })
   status: string;
 
-  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0, name: 'price' })
+  @Column({
+    type: "decimal",
+    precision: 15,
+    scale: 2,
+    default: 0,
+    name: "price",
+  })
   price: number;
 
-  @Column({ type: 'enum', enum: PriceType, default: PriceType.PER_HOUR, name: 'price_type' })
+  @Column({
+    type: "enum",
+    enum: PriceType,
+    default: PriceType.PER_HOUR,
+    name: "price_type",
+  })
   priceType: PriceType;
 
-  @Column({ type: 'enum', enum: TransactionType, default: TransactionType.RENTAL_FEE, name: 'transaction_type' })
+  @Column({
+    type: "enum",
+    enum: TransactionType,
+    default: TransactionType.RENTAL_FEE,
+    name: "transaction_type",
+  })
   transactionType: TransactionType;
 
-  @Column({ name: 'min_cancellation_hours', default: 1 })
+  @Column({ name: "min_cancellation_hours", default: 1 })
   minCancellationHours: number;
 }
