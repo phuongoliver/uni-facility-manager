@@ -1,8 +1,23 @@
-import { IsNotEmpty, IsInt, IsString, IsEnum, IsArray, ValidateNested, Min, Max, IsDateString, ValidatorConstraint, ValidatorConstraintInterface, ValidationArguments, Validate, IsOptional } from 'class-validator';
-import { Type } from 'class-transformer';
-import { BookingType, BookingStatus } from '../../../common/enums/db-enums';
+import {
+  IsNotEmpty,
+  IsInt,
+  IsString,
+  IsEnum,
+  IsArray,
+  ValidateNested,
+  Min,
+  Max,
+  IsDateString,
+  ValidatorConstraint,
+  ValidatorConstraintInterface,
+  ValidationArguments,
+  Validate,
+  IsOptional,
+} from "class-validator";
+import { Type } from "class-transformer";
+import { BookingType, BookingStatus } from "../../../common/enums/db-enums";
 
-@ValidatorConstraint({ name: 'wordCount', async: false })
+@ValidatorConstraint({ name: "wordCount", async: false })
 export class WordCountValidator implements ValidatorConstraintInterface {
   validate(text: string, args: ValidationArguments) {
     if (!text) return true; // Let IsNotEmpty handle empty check
@@ -58,9 +73,9 @@ export class CreateBookingDto {
   @Type(() => BookingEquipmentItemDto)
   equipment_items: BookingEquipmentItemDto[];
 
-  @IsEnum(['DAILY', 'WEEKLY', 'MONTHLY'])
+  @IsEnum(["DAILY", "WEEKLY", "MONTHLY"])
   @IsOptional()
-  recurrence_type?: 'DAILY' | 'WEEKLY' | 'MONTHLY';
+  recurrence_type?: "DAILY" | "WEEKLY" | "MONTHLY";
 
   @IsDateString()
   @IsOptional()

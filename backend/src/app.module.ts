@@ -1,13 +1,13 @@
-import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { BookingsModule } from './modules/bookings/bookings.module';
-import { UsersModule } from './modules/users/users.module';
-import { AuthModule } from './modules/auth/auth.module';
-import { FacilitiesModule } from './modules/facilities/facilities.module';
-import { EquipmentsModule } from './modules/equipments/equipments.module';
-import { PaymentsModule } from './modules/payments/payments.module';
-import { NotificationsModule } from './modules/notifications/notifications.module';
+import { Module } from "@nestjs/common";
+import { ConfigModule } from "@nestjs/config";
+import { TypeOrmModule } from "@nestjs/typeorm";
+import { BookingsModule } from "./modules/bookings/bookings.module";
+import { UsersModule } from "./modules/users/users.module";
+import { AuthModule } from "./modules/auth/auth.module";
+import { FacilitiesModule } from "./modules/facilities/facilities.module";
+import { EquipmentsModule } from "./modules/equipments/equipments.module";
+import { PaymentsModule } from "./modules/payments/payments.module";
+import { NotificationsModule } from "./modules/notifications/notifications.module";
 
 @Module({
   imports: [
@@ -18,17 +18,17 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 
     // 2. Kết nối Database PostgreSQL
     TypeOrmModule.forRoot({
-      type: 'postgres',
-      host: process.env.DB_HOST || 'localhost',
+      type: "postgres",
+      host: process.env.DB_HOST || "localhost",
       port: parseInt(process.env.DB_PORT) || 5432,
-      username: process.env.DB_USER || 'admin',
-      password: process.env.DB_PASSWORD || 'StrongPassword123!', // Matches docker-compose.yml
-      database: process.env.DB_NAME || 'uni_facility_db',
+      username: process.env.DB_USER || "admin",
+      password: process.env.DB_PASSWORD || "StrongPassword123!", // Matches docker-compose.yml
+      database: process.env.DB_NAME || "uni_facility_db",
 
       // Tự động load tất cả entities (Booking, BookingDetail,...)
       autoLoadEntities: true,
 
-      // QUAN TRỌNG: set false vì bạn đã có file init.sql chuẩn rồi. 
+      // QUAN TRỌNG: set false vì bạn đã có file init.sql chuẩn rồi.
       // Nếu để true, TypeORM có thể tự sửa schema làm hỏng các Constraint/Trigger xịn của bạn.
       synchronize: false,
     }),
@@ -45,4 +45,4 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
   controllers: [],
   providers: [],
 })
-export class AppModule { }
+export class AppModule {}

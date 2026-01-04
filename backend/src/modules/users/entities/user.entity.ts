@@ -1,42 +1,48 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, OneToMany } from 'typeorm';
-import { Booking } from '../../bookings/entities/booking.entity';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  OneToMany,
+} from "typeorm";
+import { Booking } from "../../bookings/entities/booking.entity";
 
 export enum UserRole {
-    STUDENT = 'STUDENT',
-    LECTURER = 'LECTURER',
-    ADMIN = 'ADMIN',
-    FACILITY_MANAGER = 'FACILITY_MANAGER',
+  STUDENT = "STUDENT",
+  LECTURER = "LECTURER",
+  ADMIN = "ADMIN",
+  FACILITY_MANAGER = "FACILITY_MANAGER",
 }
 
-@Entity('users')
+@Entity("users")
 export class User {
-    @PrimaryGeneratedColumn({ name: 'user_id' })
-    userId: number;
+  @PrimaryGeneratedColumn({ name: "user_id" })
+  userId: number;
 
-    @Column({ name: 'sso_id', unique: true, length: 50 })
-    ssoId: string;
+  @Column({ name: "sso_id", unique: true, length: 50 })
+  ssoId: string;
 
-    @Column({ name: 'full_name', length: 100 })
-    fullName: string;
+  @Column({ name: "full_name", length: 100 })
+  fullName: string;
 
-    @Column({ unique: true, length: 100 })
-    email: string;
+  @Column({ unique: true, length: 100 })
+  email: string;
 
-    @Column({
-        type: 'enum',
-        enum: UserRole,
-    })
-    role: UserRole;
+  @Column({
+    type: "enum",
+    enum: UserRole,
+  })
+  role: UserRole;
 
-    @Column({ length: 100, nullable: true })
-    department: string;
+  @Column({ length: 100, nullable: true })
+  department: string;
 
-    @Column({ default: 'ACTIVE', length: 20 })
-    status: string;
+  @Column({ default: "ACTIVE", length: 20 })
+  status: string;
 
-    @CreateDateColumn({ name: 'created_at' })
-    createdAt: Date;
+  @CreateDateColumn({ name: "created_at" })
+  createdAt: Date;
 
-    @OneToMany(() => Booking, (booking) => booking.user)
-    bookings: Booking[];
+  @OneToMany(() => Booking, (booking) => booking.user)
+  bookings: Booking[];
 }

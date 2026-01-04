@@ -53,6 +53,7 @@ export function ScheduleGrid({
 
     // Sync baseDate if selectedDate changes externally
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         if (selectedDate) setBaseDate(selectedDate);
     }, [selectedDate]);
 

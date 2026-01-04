@@ -390,7 +390,7 @@ export function NewBookingForm({ editBookingId, onSuccess }: NewBookingFormProps
 
             if (endDate >= start) {
                 let count = 0;
-                let current = new Date(start);
+                const current = new Date(start);
                 // Safety break
                 let safe = 0;
                 while (current <= endDate && safe < 366) { // Limit to 1 year approx to prevent freeze

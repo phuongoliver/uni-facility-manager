@@ -15,7 +15,7 @@ async function getBooking(id: string) {
 export default async function BookRoomPage({ searchParams }: PageProps) {
     const resolvedSearchParams = await searchParams;
     const editId = resolvedSearchParams?.edit;
-    let initialData = null;
+    const initialData = null;
 
     if (editId) {
         // Backend API doesn't have GET /bookings/:id exposed plainly (It has GET /bookings for all, or /bookings/facility/:id).
