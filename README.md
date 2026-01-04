@@ -1,134 +1,84 @@
 # Uni Facility Manager
 
-Project quản lý cơ sở vật chất trường đại học (University Facility Manager). Hệ thống giúp sinh viên và cán bộ quản lý, đặt lịch, và theo dõi việc sử dụng các phòng học, phòng thí nghiệm và thiết bị.
+A comprehensive University Facility Management System. This platform empowers students and staff to seamlessly schedule, approve, and track the usage of classrooms, laboratories, and university equipment.
 
-## Tech Stack
+## 🚀 Key Features
 
-Dự án được xây dựng dựa trên kiến trúc Client-Server hiện đại, tách biệt rõ ràng giữa Frontend và Backend.
+*   **Smart Booking:** Real-time reservation of classrooms, labs, and facilities.
+*   **Equipment Management:** Borrow and return equipment either independently or attached to facility bookings.
+*   **Approval Workflow:** Automated workflow for request processing (Student -> Admin/Manager approval).
+*   **Payments:** Integrated payment processing for paid services and facilities.
+*   **Authentication:** Multi-method login support (Local, SSO/OAuth2).
+*   **Schedule & Tracking:** Visual calendar views with robust conflict detection (Overbooking protection).
 
-### Frontend
-- **Framework**: [Next.js 16](https://nextjs.org/) (App Router)
-- **Language**: TypeScript
-- **Styling**: [Tailwind CSS v4](https://tailwindcss.com/)
-- **Components**: [Radix UI](https://www.radix-ui.com/) (Headless UI components)
-- **Form Handling**: React Hook Form + Zod (Validation)
-- **Icons**: Lucide React
+## 🛠 Tech Stack
 
-### Backend
-- **Framework**: [NestJS](https://nestjs.com/)
-- **Language**: TypeScript
-- **Database ORM**: TypeORM
-- **Database System**: PostgreSQL
-- **Architecture**: Modular Monolith/Layered Architecture (Modules, Controllers, Services, DTOs)
+Built on a modern **Modular Monolith** architecture, ensuring scalability and maintainability.
 
-### Infrastructure & DevOps
-- **Containerization**: Docker
-- **Orchestration**: Docker Compose
-- **Database**: PostgreSQL 16 Alpine Image
+| Area | Technology |
+| :--- | :--- |
+| **Frontend** | [Next.js 16](https://nextjs.org/), TypeScript, Tailwind CSS, Shadcn/UI |
+| **Backend** | [NestJS](https://nestjs.com/), TypeScript, TypeORM, Passport.js |
+| **Database** | PostgreSQL 16 (with GIST indexing for range queries) |
+| **DevOps** | Docker, Docker Compose |
 
-## Architecture Design
+## ⚙️ Installation & Running
 
-Hệ thống hoạt động theo mô hình 3 lớp (3-tier architecture):
+### Prerequisites
+*   [Docker Desktop](https://www.docker.com/products/docker-desktop)
+*   [Node.js](https://nodejs.org/) v20+ (Only for local development)
 
-1.  **Presentation Layer (Frontend)**: 
-    - Chạy trên Next.js Server (Port 3001).
-    - Giao tiếp với Backend thông qua RESTful API.
-    - Xử lý giao diện người dùng, form validation và trạng thái ứng dụng.
+### Method 1: Using Docker (Recommended)
 
-2.  **Application Layer (Backend)**: 
-    - Chạy trên NestJS (Port 3500).
-    - Xử lý logic nghiệp vụ, xác thực (Authentication), phân quyền (Authorization).
-    - Expose các API endpoint cho Frontend tiêu thụ.
+Deploy the entire stack (Frontend, Backend, Database) with a single command:
 
-3.  **Data Layer (Database)**: 
-    - PostgreSQL Database (Port 5432).
-    - Lưu trữ thông tin người dùng, cơ sở vật chất, lịch đặt mượn.
-    - Dữ liệu được khởi tạo tự động (seed) thông qua script SQL trong thư mục `database/` khi khởi chạy container lần đầu.
+```bash
+docker-compose up -d --build
+```
 
-## Hướng dẫn cài đặt và chạy (Development)
+Once running successfully:
+*   **Frontend Dashboard:** [http://localhost:3001](http://localhost:3001)
+*   **Backend API:** [http://localhost:3500](http://localhost:3500)
+*   **Database:** Port `5432`
 
-### Cách 1: Chạy bằng Docker (Khuyên dùng)
+### Method 2: Manual Local Development
 
-Đây là cách nhanh nhất để dựng toàn bộ hệ thống bao gồm Database, Backend và Frontend mà không cần cài đặt môi trường phức tạp.
+<details>
+<summary>View detailed local setup instructions</summary>
 
-**Yêu cầu:** Đã cài đặt [Docker](https://www.docker.com/) và Docker Compose.
-
-1.  **Build và khởi chạy container:**
+1.  **Initialize Database:**
+    If you don't have a local PostgreSQL instance, run the database container:
     ```bash
-    docker-compose up -d --build
+    docker-compose up -d database
     ```
 
-2.  **Truy cập ứng dụng:**
-    - **Frontend**: [http://localhost:3001](http://localhost:3001)
-    - **Backend API**: [http://localhost:3500](http://localhost:3500)
-    - **Database**: Port `5432` (User: `admin`, Pass: `StrongPassword123!`, DB: `uni_facility_db`)
-
-3.  **Dừng hệ thống:**
+2.  **Start Backend (NestJS):**
     ```bash
-    docker-compose down
+    cd backend
+    npm install
+    npm run start:dev
     ```
+    Backend will listen on `http://localhost:3500`.
 
-### Cách 2: Chạy thủ công (Local Environment)
+3.  **Start Frontend (Next.js):**
+    ```bash
+    cd frontend
+    npm install
+    npm run dev
+    ```
+    App will be accessible at `http://localhost:3001`.
+</details>
 
-Sử dụng cách này nếu bạn muốn phát triển code và chạy từng service riêng biệt trên máy host.
-
-**Yêu cầu:** Node.js (v20+), npm, và PostgreSQL server đang chạy (hoặc dùng Docker chỉ cho container database).
-
-#### 1. Setup Database
-Nếu bạn không cài PostgreSQL local, bạn có thể chỉ chạy service database bằng Docker:
-```bash
-docker-compose up -d database
-```
-*Lưu ý: Đảm bảo database đã có sẵn hoặc import data từ `database/` nếu cần thiết.*
-
-#### 2. Chạy Backend
-Mở terminal tại thư mục gốc và di chuyển vào `backend`:
-
-```bash
-cd backend
-
-# Cài đặt dependencies
-npm install
-
-# (Tạo file .env nếu cần thiết, mặc định NestJS module config đang hardcode hoặc đọc env hệ thống)
-
-# Chạy server ở chế độ watch (development)
-npm run start:dev
-```
-Backend sẽ chạy tại `http://localhost:3500`.
-
-#### 3. Chạy Frontend
-Mở một terminal mới và di chuyển vào `frontend`:
-
-```bash
-cd frontend
-
-# Cài đặt dependencies
-npm install
-
-# Chạy Next.js dev server
-npm run dev
-```
-Next.js sẽ chạy trên port 3001 (`http://localhost:3001`) để tránh conflict với các project khác.
-
-## Cấu trúc thư mục
+## 📂 Project Structure
 
 ```text
 uni-facility-manager/
-├── backend/                # Source code NestJS Backend
-│   ├── src/
-│   │   ├── modules/        # Các module nghiệp vụ (Users, Auth, Facilities...)
-│   │   └── ...
-│   ├── Dockerfile
+├── backend/                # NestJS Backend source code
+│   ├── src/modules/        # Business Modules (Users, Auth, Facilities...)
 │   └── ...
-├── frontend/               # Source code Next.js Frontend
-│   ├── src/
-│   │   ├── app/            # App Router pages
-│   │   ├── components/     # UI Components
-│   │   └── ...
-│   ├── Dockerfile
+├── frontend/               # Next.js Frontend source code
+│   ├── src/app/            # App Router pages
 │   └── ...
-├── database/               # SQL scripts khởi tạo database (seed data)
-├── docker-compose.yml      # File cấu hình Docker Services
-└── README.md               # Tài liệu hướng dẫn
+├── database/               # SQL scripts for DB initialization (seed data)
+└── docker-compose.yml      # Docker Services configuration
 ```
